@@ -1,5 +1,5 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Enum
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Enum
+from sqlalchemy.orm import declared_attr, relationship
 from database import Base
 import enum
 from datetime import datetime
@@ -88,7 +88,55 @@ class LocationCategory(enum.Enum):
     OFFICE = "OFFICE"
     OTHER = "OTHER"
 
-class Supplier(Base):
+class TenantMixin:
+    """Every business record belongs to exactly one company (tenant)."""
+
+    @declared_attr
+    def company_id(cls):
+        return Column(Integer, ForeignKey('companies.id'), index=True)
+
+
+class Company(Base):
+    __tablename__ = 'companies'
+    id = Column(Integer, primary_key=True)
+    name = Column(String(150), nullable=False)
+    phone = Column(String(100))
+    email = Column(String(150))
+    address = Column(String(300))
+    banking_details = Column(String(500))
+    currency = Column(String(10), default='USD')
+    is_active = Column(Boolean, default=True, nullable=False)
+    date_created = Column(DateTime, default=datetime.utcnow)
+
+
+class User(Base):
+    __tablename__ = 'users'
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=False, index=True)
+    company = relationship('Company')
+    name = Column(String(100), nullable=False)
+    email = Column(String(150), nullable=False, unique=True, index=True)
+    password_hash = Column(String(255), nullable=False)
+    role = Column(String(30), nullable=False, default='owner')
+    is_active = Column(Boolean, default=True, nullable=False)
+    date_created = Column(DateTime, default=datetime.utcnow)
+    last_login = Column(DateTime)
+
+
+class AuditLog(Base):
+    """Who did what, and when. Rows are only ever inserted."""
+    __tablename__ = 'audit_logs'
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'))
+    user_name = Column(String(100))
+    action = Column(String(10), nullable=False)
+    path = Column(String(200), nullable=False)
+    status = Column(Integer)
+    date_created = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class Supplier(TenantMixin, Base):
     __tablename__ = 'suppliers'
     id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
@@ -101,7 +149,7 @@ class Supplier(Base):
     notes = Column(String(500))
     date_created = Column(DateTime, default=datetime.utcnow)
 
-class Customer(Base):
+class Customer(TenantMixin, Base):
     __tablename__ = 'customers'
     identification_number = Column(String(50), primary_key=True)
     name = Column(String(100), nullable=False)
@@ -112,7 +160,7 @@ class Customer(Base):
     email = Column(String(100))
     date_created = Column(DateTime, default=datetime.utcnow)
 
-class Inventory(Base):
+class Inventory(TenantMixin, Base):
     __tablename__ = 'inventory'
     id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
@@ -129,7 +177,7 @@ class Inventory(Base):
     date_created = Column(DateTime, default=datetime.utcnow)
     date_updated = Column(DateTime, onupdate=datetime.utcnow)
 
-class ActivityType(Base):
+class ActivityType(TenantMixin, Base):
     __tablename__ = 'activity_types'
     id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
@@ -137,7 +185,7 @@ class ActivityType(Base):
     is_active = Column(Boolean, default=True)
     date_created = Column(DateTime, default=datetime.utcnow)
 
-class Activity(Base):
+class Activity(TenantMixin, Base):
     __tablename__ = 'activities'
     id = Column(Integer, primary_key=True)
     customer_id = Column(String(50), ForeignKey('customers.identification_number'))
@@ -158,7 +206,7 @@ class Activity(Base):
     notes = Column(String(500))
     date_created = Column(DateTime, default=datetime.utcnow)
 
-class quotation(Base):
+class quotation(TenantMixin, Base):
     __tablename__ = 'quotations'
     id = Column(Integer, primary_key=True)
     customer_id = Column(String(50), ForeignKey('customers.identification_number'))
@@ -173,7 +221,7 @@ class quotation(Base):
     quotation_number = Column(String(20), unique=True, nullable=True)
     date_created = Column(DateTime, default=datetime.utcnow)
 
-class quotationItem(Base):
+class quotationItem(TenantMixin, Base):
     __tablename__ = 'quotation_items'
     id = Column(Integer, primary_key=True)
     quotation_id = Column(Integer, ForeignKey('quotations.id'))
@@ -185,7 +233,7 @@ class quotationItem(Base):
     description = Column(String(200))
     item_code = Column(String(50))  # For custom item codes or inventory reference
 
-class StockTransaction(Base):
+class StockTransaction(TenantMixin, Base):
     __tablename__ = 'stock_transactions'
     id = Column(Integer, primary_key=True)
     inventory_id = Column(Integer, ForeignKey('inventory.id'))
@@ -203,7 +251,7 @@ class StockTransaction(Base):
     created_by = Column(String(100))
     date_created = Column(DateTime, default=datetime.utcnow)
 
-class FinancialRecord(Base):
+class FinancialRecord(TenantMixin, Base):
     __tablename__ = 'financial_records'
     id = Column(Integer, primary_key=True)
     type = Column(Enum(FinancialType), nullable=False)
@@ -217,7 +265,7 @@ class FinancialRecord(Base):
     notes = Column(String(500))
     date_created = Column(DateTime, default=datetime.utcnow)
 
-class FinancialCategory(Base):
+class FinancialCategory(TenantMixin, Base):
     __tablename__ = 'financial_categories'
     id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
@@ -226,7 +274,7 @@ class FinancialCategory(Base):
     is_active = Column(Boolean, default=True)
     date_created = Column(DateTime, default=datetime.utcnow)
 
-class CustomField(Base):
+class CustomField(TenantMixin, Base):
     __tablename__ = 'custom_fields'
     id = Column(Integer, primary_key=True)
     entity_type = Column(String(50), nullable=False)
@@ -236,7 +284,7 @@ class CustomField(Base):
     field_type = Column(String(50), default='text')
     date_created = Column(DateTime, default=datetime.utcnow)
 
-class FuelRecord(Base):
+class FuelRecord(TenantMixin, Base):
     __tablename__ = 'fuel_records'
     id = Column(Integer, primary_key=True)
     journey_id = Column(Integer, ForeignKey('journey_records.id'))
@@ -251,7 +299,7 @@ class FuelRecord(Base):
     notes = Column(String(500))
     date_created = Column(DateTime, default=datetime.utcnow)
 
-class MileageRecord(Base):
+class MileageRecord(TenantMixin, Base):
     __tablename__ = 'mileage_records'
     id = Column(Integer, primary_key=True)
     journey_id = Column(Integer, ForeignKey('journey_records.id'))
@@ -266,7 +314,7 @@ class MileageRecord(Base):
     notes = Column(String(500))
     date_created = Column(DateTime, default=datetime.utcnow)
 
-class JourneyRecord(Base):
+class JourneyRecord(TenantMixin, Base):
     __tablename__ = 'journey_records'
     id = Column(Integer, primary_key=True)
     activity_id = Column(Integer, ForeignKey('activities.id'))
@@ -284,7 +332,7 @@ class JourneyRecord(Base):
     notes = Column(String(500))
     date_created = Column(DateTime, default=datetime.utcnow)
 
-class Location(Base):
+class Location(TenantMixin, Base):
     __tablename__ = 'locations'
     id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
@@ -297,7 +345,7 @@ class Location(Base):
     notes = Column(String(500))
     date_created = Column(DateTime, default=datetime.utcnow)
 
-class Pricing(Base):
+class Pricing(TenantMixin, Base):
     __tablename__ = 'pricing'
     id = Column(Integer, primary_key=True)
     item_type = Column(String(50), nullable=False)
@@ -310,7 +358,7 @@ class Pricing(Base):
     notes = Column(String(500))
     date_created = Column(DateTime, default=datetime.utcnow)
 
-class Invoice(Base):
+class Invoice(TenantMixin, Base):
     __tablename__ = 'invoices'
     id = Column(Integer, primary_key=True)
     customer_id = Column(String(50), ForeignKey('customers.identification_number'))
@@ -328,7 +376,7 @@ class Invoice(Base):
     invoice_number = Column(String(20), unique=True, nullable=True)
     date_created = Column(DateTime, default=datetime.utcnow)
 
-class InvoiceItem(Base):
+class InvoiceItem(TenantMixin, Base):
     __tablename__ = 'invoice_items'
     id = Column(Integer, primary_key=True)
     invoice_id = Column(Integer, ForeignKey('invoices.id'))
@@ -342,7 +390,7 @@ class InvoiceItem(Base):
     cost_price = Column(Float, default=0.0)
     amount = Column(Float, nullable=False)
 
-class Payment(Base):
+class Payment(TenantMixin, Base):
     __tablename__ = 'payments'
     id = Column(Integer, primary_key=True)
     invoice_id = Column(Integer, ForeignKey('invoices.id'))

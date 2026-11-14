@@ -1,202 +1,99 @@
-# Giebee Engineering ERP
+# Solar Business Manager
 
-This is a comprehensive ERP system for Giebee Engineering built with Flask and SQLAlchemy.
+A business management platform for solar companies: customers, inventory, quotations, invoices,
+payments, financial reporting and fleet tracking. Any solar company can sign up; each company has
+its own users and sees only its own data (Giebee Engineering is the example company).
 
-## Features
+## Accounts, companies and roles
 
-- **Dashboard**: Overview of key metrics and charts
-- **Supplier Management**: Add and manage suppliers
-- **Customer Management**: Add and manage customers
-- **Inventory Management**: Track stock levels, add/remove inventory
-- **quotation Management**: Create and manage quotations
-- **Activity Management**: Track company activities
-- **Financial Dashboard**: Revenue, expenses, and profit tracking
-- **Fuel Tracking**: Monitor fuel consumption and costs
-- **Mileage Tracking**: Track vehicle mileage and distances
-- **Journey Tracking**: Monitor vehicle journeys and locations
-- **Location Management**: Manage company locations
-- **Pricing Management**: Set and manage service pricing
+- **Sign up** at `/signup` creates a company and its owner. The owner adds team members under
+  *Team & Roles* and edits letterhead and banking details under *Company Profile*.
+- **Roles:** owner, admin, manager, salesperson, inventory manager, accountant, technician, customer
+  support. Permissions are enforced on the server for every `/api` request ([auth.py](auth.py)).
+- **Isolation:** every business table has a `company_id`. Queries are filtered and new rows stamped
+  automatically for the logged-in user's company, so one company cannot read or change another's.
+- **Activity log:** every successful change is recorded with who made it and when.
+- **Existing data:** rows created before companies existed are assigned on start-up to the company
+  named by `LEGACY_COMPANY_NAME` (default `Giebee Engineering`). Set `BOOTSTRAP_OWNER_EMAIL` and
+  `BOOTSTRAP_OWNER_PASSWORD` once to create that company's owner login.
+- **Known limit:** customer IDs and document numbers are unique across the whole platform, so two
+  companies cannot use the same customer ID.
 
-## Deployment Options
+- **Frontend:** React 18 + React Router + Bootstrap 5 + Chart.js (Vite), in [`frontend/`](frontend/)
+- **Backend:** Flask JSON API + SQLAlchemy (SQLite locally, PostgreSQL in production)
+- **PDFs:** quotations, invoices, payment receipts, income statement and balance sheet (ReportLab)
 
-### Local Development
+## Project layout
 
-1. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. Initialize the database:
-   ```bash
-   python -c "from database import init_db; init_db()"
-   ```
-
-3. Run the application:
-   ```bash
-   python main.py
-   ```
-
-### Production Deployment
-
-#### Option 1: Render (Recommended - Free tier available)
-
-1. Fork this repository on GitHub
-2. Connect your GitHub account to Render
-3. Create a new Web Service from your forked repository
-4. Configure the following:
-   - **Runtime**: Python 3
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `gunicorn --bind 0.0.0.0:$PORT main:app`
-5. Add environment variables:
-   - `FLASK_SECRET_KEY`: Generate a secure random key
-   - `DATABASE_URL`: PostgreSQL connection string (Render provides this automatically)
-6. Deploy!
-
-#### Option 2: Heroku (Step-by-Step Guide)
-
-**Prerequisites:**
-- Git installed
-- Heroku CLI installed (download from https://devcenter.heroku.com/articles/heroku-cli)
-- Heroku account (free tier available)
-
-**Step 1: Prepare Your Application**
-```bash
-# Make sure you have all deployment files
-# Procfile, runtime.txt, requirements.txt should be in your project root
-ls -la
-# Should show: Procfile, runtime.txt, requirements.txt, main.py, etc.
+```
+main.py          Flask app: serves /api and the built React app (frontend/dist)
+auth.py          Sign-up, login, roles, company isolation, audit log
+api.py           REST API (all business logic: stock movements, invoice balances, reports)
+pdfs.py          PDF documents
+models.py        SQLAlchemy models
+database.py      DB engine/session (DATABASE_URL, defaults to sqlite:///instance/database.db)
+desktop_app.py   Optional desktop window launcher (requires `pip install pywebview`)
+frontend/        React app (src/pages, src/components)
 ```
 
-**Step 2: Initialize Git Repository (if not already done)**
-```bash
-git init
-git add .
-git commit -m "Initial commit for Heroku deployment"
-```
+## Running locally
 
-**Step 3: Login to Heroku**
-```bash
-heroku login
-# This will open your browser for authentication
-```
-
-**Step 4: Create Heroku App**
-```bash
-# Create app with a unique name (replace 'your-app-name' with your choice)
-heroku create your-app-name
-
-# Or let Heroku generate a name for you
-heroku create
-```
-
-**Step 5: Add PostgreSQL Database**
-```bash
-# Add free PostgreSQL database
-heroku addons:create heroku-postgresql:hobby-dev
-
-# Verify the database was added
-heroku addons
-```
-
-**Step 6: Set Environment Variables**
-```bash
-# Generate a secure secret key (you can use any random string)
-heroku config:set FLASK_SECRET_KEY="your-very-secure-random-secret-key-here"
-
-# Set debug to false for production
-heroku config:set FLASK_DEBUG=false
-
-# Check that DATABASE_URL is automatically set by PostgreSQL addon
-heroku config
-```
-
-**Step 7: Deploy Your Application**
-```bash
-# Push your code to Heroku
-git push heroku main
-
-# If your branch is named 'master' instead of 'main':
-git push heroku master
-```
-
-**Step 8: Initialize Database**
-```bash
-# Run database initialization command
-heroku run python -c "from database import init_db; init_db()"
-```
-
-**Step 9: Open Your Application**
-```bash
-# Open the app in your browser
-heroku open
-```
-
-**Step 10: Monitor and Troubleshoot**
-```bash
-# Check app logs
-heroku logs --tail
-
-# Check app status
-heroku ps
-
-# Restart app if needed
-heroku restart
-```
-
-**Step 11: Scale Your App (Optional)**
-```bash
-# By default, Heroku runs 1 web dyno. You can scale if needed:
-heroku ps:scale web=1
-```
-
-**Common Issues and Solutions:**
-
-- **Build fails**: Check `heroku logs` for specific errors
-- **Database connection fails**: Ensure PostgreSQL addon is attached and DATABASE_URL is set
-- **Static files not loading**: WhiteNoise is configured to serve static files
-- **App crashes**: Check logs with `heroku logs --tail`
-
-**Cost:** Heroku offers a free tier with limitations. For production use, consider upgrading to paid dynos (~$7/month for basic plan).
-
-#### Option 3: Railway
-
-1. Connect your GitHub repository to Railway
-2. Railway will automatically detect Python and install dependencies
-3. Add PostgreSQL database from Railway dashboard
-4. Set environment variables in Railway dashboard
-5. Deploy!
-
-## Database Configuration
-
-The application supports multiple databases:
-
-- **SQLite**: Default for local development (no setup required)
-- **PostgreSQL**: Recommended for production (free tier available on Render, Railway, Supabase)
-- **MySQL**: Alternative option
-
-Set the `DATABASE_URL` environment variable to configure the database:
+Requirements: Python 3.10+ and Node.js 18+.
 
 ```bash
-# SQLite (default)
-DATABASE_URL=sqlite:///instance/database.db
+# 1. Backend
+pip install -r requirements.txt
+python main.py                 # API on http://localhost:5000
 
-# PostgreSQL
-DATABASE_URL=postgresql://user:password@host:port/database
-
-# MySQL
-DATABASE_URL=mysql+pymysql://user:password@host:port/database
+# 2. Frontend (second terminal) — hot reload, proxies /api to Flask
+cd frontend
+npm install
+npm run dev                    # open http://localhost:5173
 ```
 
-## Environment Variables
+To serve everything from Flask instead (production-style), build once and open http://localhost:5000:
 
-- `FLASK_SECRET_KEY`: Secret key for Flask sessions (generate a secure random key)
-- `DATABASE_URL`: Database connection string
-- `FLASK_DEBUG`: Set to `false` for production
+```bash
+cd frontend && npm run build
+```
 
-## Security Notes
+## Deployment
 
-- Change the default `FLASK_SECRET_KEY` in production
-- Use HTTPS in production
-- Regularly update dependencies
-- Monitor database access logs
-- Implement proper authentication if needed for production use
+The build must install Python deps **and** build the frontend:
+
+```bash
+pip install -r requirements.txt && cd frontend && npm ci && npm run build
+```
+
+Start command: `gunicorn --bind 0.0.0.0:$PORT main:app`
+
+- **Render:** `render.yaml` is already configured (web service + PostgreSQL, generated secret key).
+- **Vercel:** `vercel.json` builds the frontend statically and routes `/api` to Flask.
+  Use an external PostgreSQL `DATABASE_URL`; SQLite does not persist on Vercel.
+
+Environment variables:
+
+| Variable           | Purpose                                             |
+| ------------------ | --------------------------------------------------- |
+| `DATABASE_URL`     | PostgreSQL connection string (SQLite if unset)      |
+| `FLASK_SECRET_KEY` | Signs login cookies; set a long random value        |
+| `FLASK_DEBUG`      | `true`/`false` for `python main.py`                 |
+
+Tables are created automatically on start-up, and columns added since the first release are migrated
+automatically.
+
+## API overview
+
+All endpoints are JSON under `/api`:
+
+| Resource | Endpoints |
+| --- | --- |
+| Customers | `GET/POST /customers`, `GET/PUT/DELETE /customers/<id>` |
+| Inventory | `GET/POST /inventory`, `GET/PUT/DELETE /inventory/<id>`, `POST /inventory/<id>/stock-in`, `POST /inventory/<id>/stock-out` |
+| Quotations | `GET/POST /quotations`, `GET/PUT/DELETE /quotations/<id>`, `POST /quotations/<id>/convert`, `GET /quotations/<id>/pdf` |
+| Invoices | `GET/POST /invoices`, `GET/PUT/DELETE /invoices/<id>`, `POST /invoices/<id>/status`, `POST /invoices/<id>/payments`, `GET /invoices/<id>/pdf` |
+| Payments | `GET /payments`, `GET/PUT/DELETE /payments/<id>`, `GET /payments/<id>/pdf` |
+| Financial | `GET /financial/summary?month=&year=`, `GET /financial/income-statement.pdf`, `GET /financial/balance-sheet.pdf`, `/financial-records`, `/financial-categories` |
+| Other CRUD | `/suppliers`, `/activities`, `/activity-types`, `/fuel-records`, `/mileage-records`, `/journeys`, `/locations`, `/pricing` |
+| Accounts | `POST /auth/signup`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/password`, `/users`, `GET/PUT /company`, `GET /audit-log` |
+| Misc | `GET /dashboard`, `GET /meta`, `GET /_health` |

@@ -120,3 +120,7 @@ backups/
 sync_log.txt
 *.log
 .env
+
+# React frontend
+frontend/node_modules/
+frontend/dist/
