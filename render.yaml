@@ -3,6 +3,8 @@ services:
     name: solar-business-manager
     runtime: python
     plan: free
+    region: oregon
+    branch: react-multi-company
     buildCommand: pip install -r requirements.txt && cd frontend && npm ci && npm run build
     startCommand: gunicorn --bind 0.0.0.0:$PORT main:app
     healthCheckPath: /_health
@@ -12,13 +14,18 @@ services:
         generateValue: true
       - key: FLASK_DEBUG
         value: false
+      - key: PYTHON_VERSION
+        value: 3.12.8
       - key: DATABASE_URL
         fromDatabase:
-          name: solar-db
+          name: solar-business-db
           property: connectionString
 
 databases:
-  - name: solar-db
-    databaseName: solar_erp
+  - name: solar-business-db
+    databaseName: solar_business
     user: solar_user
-    plan: free
+    region: oregon
+    plan: basic-256mb
+    diskSizeGB: 1
+    postgresMajorVersion: "16"
