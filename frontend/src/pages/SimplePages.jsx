@@ -5,6 +5,7 @@ import { StatCard, StatusBadge } from '../components/ui.jsx';
 import { date, dateTime, humanize, money, nowLocal, number, today } from '../format.js';
 import { useApi } from '../hooks.js';
 import { useEnum } from '../meta.jsx';
+import { initials } from '../nav.js';
 
 const truncate = (s, n = 60) => (s && s.length > n ? `${s.slice(0, n)}…` : s || '—');
 
@@ -45,15 +46,43 @@ export function Customers() {
       idKey: 'identification_number',
       searchKeys: ['identification_number', 'full_name', 'phone', 'email', 'address'],
       deleteWarning: 'Their quotations, invoices and activities will be kept but unlinked.',
+      summary: (rows) => {
+        const withSales = rows.filter((r) => r.invoice_count > 0).length;
+        const owed = rows.reduce((t, r) => t + (r.balance_due || 0), 0);
+        const billed = rows.reduce((t, r) => t + (r.total_billed || 0), 0);
+        return (
+          <div className="row g-3 mb-4">
+            <div className="col-sm-6 col-xl-3"><StatCard label="Total customers" value={rows.length} icon="fa-user-group" /></div>
+            <div className="col-sm-6 col-xl-3"><StatCard label="With sales" value={withSales} icon="fa-bolt" color="info" hint={`${rows.length - withSales} without an invoice yet`} /></div>
+            <div className="col-sm-6 col-xl-3"><StatCard label="Total billed" value={money(billed)} icon="fa-wallet" color="warning" hint={withSales ? `${money(billed / withSales)} per customer` : undefined} /></div>
+            <div className="col-sm-6 col-xl-3"><StatCard label="Outstanding" value={money(owed)} icon="fa-hourglass-half" color="danger" hint="Unpaid invoice balances" tone={owed ? 'bad' : ''} /></div>
+          </div>
+        );
+      },
       columns: [
-        { key: 'identification_number', label: 'ID', render: (r) => <code>{r.identification_number}</code> },
-        { key: 'full_name', label: 'Name', render: (r) => <span className="fw-semibold">{r.full_name}</span> },
-        { key: 'phone', label: 'Phone' },
-        { key: 'email', label: 'Email' },
-        { key: 'address', label: 'Address', render: (r) => truncate(r.address, 40) },
         {
-          key: 'links', label: 'Documents',
-          render: (r) => <Link to={`/invoices?customer=${encodeURIComponent(r.identification_number)}`} className="small">Invoices</Link>,
+          key: 'full_name', label: 'Customer',
+          render: (r) => (
+            <span className="d-inline-flex align-items-center gap-2">
+              <span className="avatar soft" style={{ width: 32, height: 32, fontSize: '0.7rem' }}>{initials(r.full_name)}</span>
+              <span><span className="fw-semibold d-block">{r.full_name}</span><code className="small text-muted">{r.identification_number}</code></span>
+            </span>
+          ),
+        },
+        { key: 'address', label: 'Location', render: (r) => truncate(r.address, 34) },
+        { key: 'phone', label: 'Phone' },
+        {
+          key: 'invoice_count', label: 'Invoices',
+          render: (r) => (r.invoice_count
+            ? <Link to={`/invoices?customer=${encodeURIComponent(r.identification_number)}`}>{r.invoice_count} · {money(r.total_billed)}</Link>
+            : <span className="text-muted">None</span>),
+        },
+        { key: 'job_count', label: 'Jobs', render: (r) => (r.job_count ? `${r.job_count} job${r.job_count > 1 ? 's' : ''}` : '—') },
+        { key: 'balance_due', label: 'Owes', className: 'text-end', render: (r) => (r.balance_due > 0 ? <span className="fw-semibold text-danger">{money(r.balance_due)}</span> : '—') },
+        {
+          key: 'status', label: 'Status',
+          render: (r) => (r.balance_due > 0 ? <span className="badge text-bg-warning">Owes</span>
+            : r.invoice_count > 0 ? <span className="badge text-bg-success">Active</span> : <span className="badge text-bg-primary">Prospect</span>),
         },
       ],
       fields: [

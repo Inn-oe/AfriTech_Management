@@ -2,7 +2,7 @@
 import enum
 import random
 import string
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import sqlalchemy as sa
 from flask import Blueprint, g, jsonify, request, send_file
@@ -331,6 +331,60 @@ def _top_locations(limit):
     return [{'label': k, 'value': v} for k, v in top]
 
 
+def _dashboard_extras():
+    """Numbers for the executive dashboard and reports, all taken from stored records."""
+    now = datetime.now()
+    monthly = []
+    for back in range(5, -1, -1):
+        y, m = now.year, now.month - back
+        while m < 1:
+            y, m = y - 1, m + 12
+        m_start, m_end = month_range(y, m)
+        monthly.append({'label': MONTHS[m - 1], 'revenue': _sum(Invoice.total_amount, *_invoiced(m_start, m_end)),
+                        'expenses': _sum(FinancialRecord.amount, *_records(FinancialType.EXPENSE, m_start, m_end))})
+    start, end = month_range(now.year, now.month)
+    category = sa.func.coalesce(Inventory.category, 'Services & labour')
+    by_category = db_session.query(category, sa.func.sum(InvoiceItem.amount)) \
+        .select_from(InvoiceItem).join(Invoice, InvoiceItem.invoice_id == Invoice.id) \
+        .outerjoin(Inventory, InvoiceItem.inventory_id == Inventory.id) \
+        .filter(*_invoiced(start, end)).group_by(category) \
+        .order_by(sa.func.sum(InvoiceItem.amount).desc()).all()
+
+    quote_rows = db_session.query(quotation.status, sa.func.count(quotation.id),
+                                  sa.func.coalesce(sa.func.sum(quotation.total_amount), 0)) \
+        .group_by(quotation.status).all()
+    by_status = [{'label': getattr(st, 'value', st) or 'PENDING', 'count': n, 'value': v} for st, n, v in quote_rows]
+    open_q = [q for q in by_status if q['label'] == 'PENDING']
+    quote_total = sum(q['count'] for q in by_status)
+    converted = sum(q['count'] for q in by_status if q['label'] == 'PROCESSED')
+
+    def jobs(status):
+        return db_session.query(Activity).filter(Activity.status == status).count()
+
+    week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    recent_jobs = db_session.query(Activity).order_by(Activity.date.desc(), Activity.id.desc()).limit(6).all()
+    overdue = db_session.query(Invoice).filter(
+        Invoice.status.notin_([InvoiceStatus.CANCELLED, InvoiceStatus.PAID]),
+        Invoice.balance_due > 0, Invoice.due_date < day_start).count()
+    prev_y, prev_m = (now.year, now.month - 1) if now.month > 1 else (now.year - 1, 12)
+    return dict(
+        monthly=monthly,
+        revenue_by_category=[{'label': c, 'value': v} for c, v in by_category if v],
+        month_revenue=monthly[-1]['revenue'], prev_month_revenue=monthly[-2]['revenue'],
+        quotes={'open_count': sum(q['count'] for q in open_q), 'open_value': sum(q['value'] for q in open_q),
+                'total': quote_total, 'converted': converted, 'by_status': by_status},
+        jobs={'active': jobs(ActivityStatusEnum.IN_PROGRESS), 'scheduled': jobs(ActivityStatusEnum.SCHEDULED),
+              'completed': jobs(ActivityStatusEnum.COMPLETED),
+              'this_week': db_session.query(Activity).filter(
+                  Activity.date >= week_start, Activity.date < week_start + timedelta(days=7)).count(),
+              'today': db_session.query(Activity).filter(
+                  Activity.date >= day_start, Activity.date < day_start + timedelta(days=1)).count(),
+              'recent': [_serialize_activity(a) for a in recent_jobs]},
+        overdue_invoices=overdue,
+    )
+
+
 @bp.get('/dashboard')
 def dashboard():
     outstanding = db_session.query(sa.func.sum(Invoice.balance_due)).filter(
@@ -353,6 +407,7 @@ def dashboard():
                     'minimum_stock_level': i.minimum_stock_level} for i in low_stock],
         recent_invoices=[_serialize_invoice(i) for i in recent_invoices],
         top_locations=_top_locations(10),
+        **_dashboard_extras(),
     )
 
 
@@ -371,7 +426,17 @@ def _serialize_customer(c):
 @bp.get('/customers')
 def customers_list():
     items = db_session.query(Customer).order_by(Customer.name).all()
-    return jsonify([_serialize_customer(c) for c in items])
+    billed = {cid: (n, total, due) for cid, n, total, due in db_session.query(
+        Invoice.customer_id, sa.func.count(Invoice.id), sa.func.coalesce(sa.func.sum(Invoice.total_amount), 0),
+        sa.func.coalesce(sa.func.sum(Invoice.balance_due), 0))
+        .filter(Invoice.status != InvoiceStatus.CANCELLED).group_by(Invoice.customer_id)}
+    jobs = dict(db_session.query(Activity.customer_id, sa.func.count(Activity.id)).group_by(Activity.customer_id))
+    out = []
+    for c in items:
+        n, total, due = billed.get(c.identification_number, (0, 0, 0))
+        out.append(_serialize_customer(c) | {'invoice_count': n, 'total_billed': total, 'balance_due': due,
+                                             'job_count': jobs.get(c.identification_number, 0)})
+    return jsonify(out)
 
 
 @bp.get('/customers/<string:pk>')

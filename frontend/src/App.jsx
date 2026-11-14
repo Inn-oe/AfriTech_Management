@@ -12,6 +12,8 @@ import Invoices from './pages/Invoices.jsx';
 import DocumentForm from './pages/DocumentForm.jsx';
 import DocumentView from './pages/DocumentView.jsx';
 import Payments from './pages/Payments.jsx';
+import Projects from './pages/Projects.jsx';
+import Reports from './pages/Reports.jsx';
 import Financial from './pages/Financial.jsx';
 import {
   Activities, ActivityTypes, Customers, FinancialCategories, FuelRecords, Journeys, Locations,
@@ -73,6 +75,9 @@ export default function App() {
           <Route path="invoices/:id/edit" element={<DocumentForm kind="invoice" />} />
 
           <Route path="payments" element={<Payments />} />
+          <Route path="projects" element={<Projects />} />
+          <Route path="reports" element={<Reports />} />
+          <Route path="settings" element={<Navigate to="/account" replace />} />
           <Route path="activities" element={<Activities />} />
           <Route path="activity-types" element={<ActivityTypes />} />
           <Route path="financial" element={<Financial />} />

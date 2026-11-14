@@ -1,88 +1,107 @@
-import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth.jsx';
-
-// `module` is the permission group needed to see the link (see auth.py on the server).
-const NAV = [
-  { to: '/', label: 'Dashboard', icon: 'fa-gauge-high', end: true, module: 'dashboard' },
-  { section: 'Sales' },
-  { to: '/customers', label: 'Customers', icon: 'fa-users', module: 'customers' },
-  { to: '/quotations', label: 'Quotations', icon: 'fa-file-signature', module: 'sales' },
-  { to: '/invoices', label: 'Invoices', icon: 'fa-file-invoice-dollar', module: 'sales' },
-  { to: '/payments', label: 'Payments', icon: 'fa-money-bill-wave', module: 'sales' },
-  { section: 'Operations' },
-  { to: '/inventory', label: 'Inventory', icon: 'fa-boxes-stacked', module: 'inventory' },
-  { to: '/suppliers', label: 'Suppliers', icon: 'fa-truck', module: 'inventory' },
-  { to: '/activities', label: 'Activities', icon: 'fa-list-check', module: 'operations' },
-  { to: '/financial', label: 'Financial', icon: 'fa-chart-line', module: 'finance' },
-  { section: 'Fleet Tracking' },
-  { to: '/fuel', label: 'Fuel', icon: 'fa-gas-pump', module: 'operations' },
-  { to: '/mileage', label: 'Mileage', icon: 'fa-road', module: 'operations' },
-  { to: '/journeys', label: 'Journeys', icon: 'fa-car', module: 'operations' },
-  { section: 'Settings' },
-  { to: '/activity-types', label: 'Activity Types', icon: 'fa-tags', module: 'operations' },
-  { to: '/financial-categories', label: 'Financial Categories', icon: 'fa-folder-tree', module: 'finance' },
-  { to: '/locations', label: 'Locations', icon: 'fa-location-dot', module: 'operations' },
-  { to: '/pricing', label: 'Pricing', icon: 'fa-dollar-sign', module: 'inventory' },
-  { section: 'Company' },
-  { to: '/company', label: 'Company Profile', icon: 'fa-building', module: 'admin' },
-  { to: '/team', label: 'Team & Roles', icon: 'fa-user-shield', module: 'admin' },
-  { to: '/activity-log', label: 'Activity Log', icon: 'fa-clock-rotate-left', module: 'admin' },
-];
+import { initials, sectionOf, SECTIONS } from '../nav.js';
+import { Brand } from './Brand.jsx';
+import SearchPalette from './SearchPalette.jsx';
 
 export default function Layout() {
   const [open, setOpen] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [search, setSearch] = useState(false);
+  const menuRef = useRef(null);
   const { pathname } = useLocation();
   const { user, company, can, logout } = useAuth();
 
-  useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => { setOpen(false); setMenu(false); }, [pathname]);
 
-  // Keep only links the user may open, then drop section titles left with nothing under them.
-  const visible = NAV.filter((item) => item.section || can(item.module));
-  const items = visible.filter((item, i) => !item.section || (visible[i + 1] && !visible[i + 1].section));
+  // Ctrl/Cmd+K opens search; clicking outside closes the user menu.
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setSearch(true); }
+    };
+    const onClick = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenu(false); };
+    window.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onClick);
+    return () => { window.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onClick); };
+  }, []);
+
+  // Sections and tabs this user may open.
+  const sections = SECTIONS
+    .map((s) => ({ ...s, tabs: s.tabs.filter((t) => t.module === 'any' || can(t.module)) }))
+    .filter((s) => s.tabs.length > 0);
+  const current = sectionOf(pathname);
+  const visible = sections.find((s) => s.key === current?.key);
+  const cityLine = (company?.address || '').split('\n').filter(Boolean).pop();
 
   return (
     <div className="app-shell">
-      <nav className={`sidebar ${open ? 'open' : ''}`}>
-        <div className="sidebar-header text-center">
-          <i className="fas fa-solar-panel fa-2x text-warning mb-2" />
-          <div className="fw-bold text-white text-break">{company?.name}</div>
-        </div>
+      <nav className={`sidebar ${open ? 'open' : ''}`} aria-label="Main">
+        <Brand />
+        <div className="nav-eyebrow">Workspace</div>
         <div className="sidebar-nav">
-          {items.map((item) =>
-            item.section ? (
-              <div key={item.section} className="nav-section">{item.section}</div>
-            ) : (
-              <NavLink key={item.to} to={item.to} end={item.end} className="nav-link">
-                <i className={`fas ${item.icon} fa-fw me-3`} />
-                {item.label}
-              </NavLink>
-            ),
-          )}
+          {sections.map((s) => (
+            <NavLink key={s.key} to={s.tabs[0].to} end={s.key === 'dashboard'}
+              className={() => `nav-link ${visible?.key === s.key ? 'active' : ''}`}>
+              <i className={`fas ${s.icon}`} />{s.label}
+            </NavLink>
+          ))}
         </div>
-        <div className="sidebar-footer d-flex align-items-center gap-2">
-          <NavLink to="/account" className="flex-grow-1 min-w-0 text-decoration-none text-reset" title="My account">
-            <div className="text-white text-truncate">{user?.name}</div>
-            <div className="text-truncate">{user?.role_label}</div>
-          </NavLink>
-          <button type="button" className="btn btn-sm btn-outline-light" onClick={logout} title="Log out" aria-label="Log out">
-            <i className="fas fa-right-from-bracket" />
-          </button>
+        <div className="sidebar-promo">
+          <div className="sun" />
+          <div style={{ position: 'relative' }}>Powering smarter<br />solar businesses</div>
         </div>
+        <Link to={can('admin') ? '/company' : '/account'} className="sidebar-company" title="Company">
+          <span className="avatar square">{initials(company?.name)}</span>
+          <span className="min-w-0">
+            <span className="d-block fw-semibold small text-truncate">{company?.name}</span>
+            {cityLine && <span className="d-block small text-truncate" style={{ opacity: 0.6, fontSize: '0.72rem' }}>{cityLine}</span>}
+          </span>
+        </Link>
       </nav>
       {open && <div className="sidebar-scrim" onClick={() => setOpen(false)} />}
 
       <div className="main-area">
-        <header className="topbar d-lg-none">
-          <button type="button" className="btn btn-link text-dark" aria-label="Open menu" onClick={() => setOpen(true)}>
+        <header className="topbar">
+          <button type="button" className="btn btn-link text-dark d-lg-none p-0" aria-label="Open menu" onClick={() => setOpen(true)}>
             <i className="fas fa-bars fa-lg" />
           </button>
-          <span className="fw-semibold text-truncate">{company?.name}</span>
+          <div className="crumbs"><span>Workspace</span><span className="sep">/</span><b>{company?.name}</b></div>
+          <button type="button" className="search-trigger" onClick={() => setSearch(true)}>
+            <i className="fas fa-search" /><span className="text-truncate">Search customers, quotes, products…</span><kbd>Ctrl K</kbd>
+          </button>
+          <div className="position-relative" ref={menuRef}>
+            <button type="button" className="user-chip" onClick={() => setMenu((m) => !m)} aria-haspopup="menu" aria-expanded={menu}>
+              <span className="avatar">{initials(user?.name)}</span>
+              <span className="d-none d-md-block lh-sm">
+                <span className="d-block small fw-semibold">{user?.name}</span>
+                <span className="d-block text-muted" style={{ fontSize: '0.72rem' }}>{user?.role_label}</span>
+              </span>
+              <i className="fas fa-chevron-down small text-muted d-none d-md-block" />
+            </button>
+            {menu && (
+              <div className="user-menu" role="menu">
+                <div className="px-3 py-2 small text-muted border-bottom mb-1 text-truncate">{user?.email}</div>
+                <Link to="/account" role="menuitem"><i className="fas fa-user fa-fw" />My account</Link>
+                <button type="button" role="menuitem" onClick={logout}><i className="fas fa-right-from-bracket fa-fw" />Log out</button>
+              </div>
+            )}
+          </div>
         </header>
+
         <main className="main-content">
+          {visible && <div className="eyebrow mb-1">Solar Business Manager / <b>{visible.label}</b></div>}
+          {visible && visible.tabs.length > 1 && (
+            <nav className="section-tabs" aria-label={`${visible.label} sections`}>
+              {visible.tabs.map((t) => (
+                <NavLink key={t.to} to={t.to} end={t.end}>{t.label}</NavLink>
+              ))}
+            </nav>
+          )}
           <Outlet />
         </main>
       </div>
+      {search && <SearchPalette onClose={() => setSearch(false)} />}
     </div>
   );
 }

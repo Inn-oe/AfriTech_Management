@@ -4,10 +4,7 @@ export function PageHeader({ title, icon, subtitle, children }) {
   return (
     <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
       <div>
-        <h1 className="h3 mb-0 fw-semibold">
-          {icon && <i className={`fas ${icon} me-2 text-primary`} />}
-          {title}
-        </h1>
+        <h1 className="h2 mb-0 fw-bold">{title}</h1>
         {subtitle && <div className="text-muted small mt-1">{subtitle}</div>}
       </div>
       <div className="d-flex flex-wrap gap-2">{children}</div>
@@ -15,17 +12,24 @@ export function PageHeader({ title, icon, subtitle, children }) {
   );
 }
 
-export function StatCard({ label, value, icon, color = 'primary', hint }) {
+// color: primary (green) | warning | danger | info | secondary. tone colours the hint: '' | 'warn' | 'bad'.
+const ICON_TINT = {
+  primary: ['#e5f4ee', '#0f7b5a'], success: ['#e5f4ee', '#0f7b5a'], warning: ['#fdf0cf', '#a86c00'],
+  danger: ['#fde8e6', '#c53030'], info: ['#dfeefb', '#2c6fbb'], secondary: ['#eceff3', '#55657a'],
+};
+
+export function StatCard({ label, value, icon, color = 'primary', hint, tone = '' }) {
+  const [bg, fg] = ICON_TINT[color] || ICON_TINT.primary;
   return (
     <div className="card stat-card h-100">
       <div className="card-body d-flex align-items-center">
-        <div className={`stat-icon bg-${color}-subtle text-${color}`}>
+        <div className="stat-icon" style={{ background: bg, color: fg }}>
           <i className={`fas ${icon}`} />
         </div>
         <div className="ms-3 min-w-0">
-          <div className="text-muted small text-uppercase fw-semibold">{label}</div>
+          <div className="stat-label">{label}</div>
           <div className="fs-4 fw-bold text-truncate">{value}</div>
-          {hint && <div className="small text-muted">{hint}</div>}
+          {hint && <div className={`stat-hint ${tone}`}>{hint}</div>}
         </div>
       </div>
     </div>

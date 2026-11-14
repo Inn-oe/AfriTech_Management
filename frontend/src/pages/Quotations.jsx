@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, pdfUrl } from '../api.js';
 import { useToast } from '../components/Toast.jsx';
-import { EmptyRow, ErrorBox, IconButton, Loading, PageHeader, SearchBox, StatusBadge } from '../components/ui.jsx';
+import { EmptyRow, ErrorBox, IconButton, Loading, PageHeader, SearchBox, StatCard, StatusBadge } from '../components/ui.jsx';
 import { date, money } from '../format.js';
 import { useApi } from '../hooks.js';
 
@@ -17,6 +17,11 @@ export default function Quotations() {
     return (data || []).filter((r) => !q || [r.quotation_number, r.customer?.name, r.customer?.id, r.status]
       .some((v) => String(v ?? '').toLowerCase().includes(q)));
   }, [data, search]);
+
+  const all = data || [];
+  const open = all.filter((q) => q.status === 'PENDING');
+  const converted = all.filter((q) => q.status === 'PROCESSED');
+  const sum = (list) => list.reduce((t, q) => t + (q.total_amount || 0), 0);
 
   const convert = async (q) => {
     if (!window.confirm(`Convert quotation ${q.quotation_number} to an invoice? Stock will be deducted.`)) return;
@@ -47,6 +52,12 @@ export default function Quotations() {
         <Link to="/quotations/new" className="btn btn-primary"><i className="fas fa-plus me-2" />New quotation</Link>
       </PageHeader>
       <ErrorBox error={error} onRetry={reload} />
+      <div className="row g-3 mb-4">
+        <div className="col-sm-6 col-xl-3"><StatCard label="Open quotations" value={money(sum(open))} icon="fa-file-lines" color="info" hint={`${open.length} awaiting a decision`} /></div>
+        <div className="col-sm-6 col-xl-3"><StatCard label="Converted to sales" value={money(sum(converted))} icon="fa-wallet" hint={`${converted.length} quotation${converted.length === 1 ? '' : 's'}`} /></div>
+        <div className="col-sm-6 col-xl-3"><StatCard label="Average quotation" value={money(all.length ? sum(all) / all.length : 0)} icon="fa-chart-column" color="warning" hint={`Across ${all.length} quotations`} tone="warn" /></div>
+        <div className="col-sm-6 col-xl-3"><StatCard label="Quote conversion" value={all.length ? `${Math.round((converted.length / all.length) * 100)}%` : '—'} icon="fa-check" color="secondary" hint="Quotations turned into invoices" /></div>
+      </div>
       <div className="card">
         <div className="table-responsive">
           <table className="table table-hover align-middle mb-0">
