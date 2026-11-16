@@ -6,7 +6,10 @@ staff update the sales stage, notes, follow-up date, owner and the "pause the bo
 Only the company named in WHATSAPP_COMPANY_ID can use it, because one bot serves one company.
 """
 import json
+import os
 import re
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 
 import sqlalchemy as sa
@@ -131,6 +134,45 @@ def client_update(who):
         db_session.execute(sa.text(f'UPDATE contacts SET {assignments} WHERE who = :who'),
                            {**changes, 'who': who})
         db_session.commit()
+    return jsonify(client=_client_json(_find(who)))
+
+
+def _bot():
+    """Bot address and shared key; replies go through the bot because it holds the WhatsApp token."""
+    url = os.getenv('WHATSAPP_BOT_URL', '').rstrip('/')
+    key = os.getenv('WHATSAPP_INTERNAL_KEY', '')
+    return (url, key) if url and key else (None, None)
+
+
+@bp.post('/clients/<path:who>/reply')
+def client_reply(who):
+    if not _need_whatsapp():
+        raise ApiError('No WhatsApp chats yet.', 404)
+    _find(who)
+    text = str((request.get_json(silent=True) or {}).get('text') or '').strip()[:1000]
+    if not text:
+        raise ApiError('Type a message first.')
+    url, key = _bot()
+    if not url:
+        raise ApiError('Replying from here is not set up yet (WHATSAPP_BOT_URL / WHATSAPP_INTERNAL_KEY).', 503)
+    req = urllib.request.Request(
+        f'{url}/internal/reply', method='POST',
+        data=json.dumps({'who': who, 'text': text, 'by': g.user.name}).encode(),
+        headers={'Content-Type': 'application/json', 'X-Internal-Key': key})
+    try:
+        # the free bot service may be asleep; waking it can take close to a minute
+        with urllib.request.urlopen(req, timeout=75) as resp:
+            json.loads(resp.read() or b'{}')
+    except urllib.error.HTTPError as exc:
+        try:
+            message = json.loads(exc.read() or b'{}').get('error')
+        except ValueError:
+            message = None
+        raise ApiError(message or f'The WhatsApp bot refused the message ({exc.code}).',
+                       400 if exc.code < 500 else 502)
+    except (urllib.error.URLError, TimeoutError, OSError):
+        raise ApiError('Could not reach the WhatsApp bot. Try again in a minute.', 502)
+    db_session.expire_all()  # the bot updated the contact; read fresh values
     return jsonify(client=_client_json(_find(who)))
 
 

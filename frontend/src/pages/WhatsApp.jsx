@@ -24,6 +24,69 @@ const ago = (iso) => {
 const label = (c) => c.name || (c.who.startsWith('web:') ? `Website visitor ${c.who.slice(4, 10)}` : `+${c.who}`);
 const Temp = ({ t }) => <span className={`badge text-bg-${TEMP[t].cls}`}>{TEMP[t].label}</span>;
 
+// Ready-made starting points for common replies; staff edit them before sending.
+function quickReplies(c, me) {
+  const first = (c.name || '').split(' ')[0];
+  const hi = first ? `Hi ${first}, ` : 'Hi, ';
+  const s = c.signals || {};
+  const want = s.need || s.recommended || s.package;
+  const asked = (s.unanswered || []).slice(-1)[0];
+  return [
+    asked && { label: 'Answer question', text: `${hi}this is ${me}. Thanks for your question about "${asked}". ` },
+    { label: 'Book site visit', text: `${hi}this is ${me}. To give you an accurate price${want ? ` for ${want}` : ''}, we offer a free site visit. Which day and time suits you this week${s.location ? ` in ${s.location}` : ''}?` },
+    { label: 'Quote is ready', text: `${hi}your quotation${want ? ` for ${want}` : ''} is ready. Can I send it here? It includes all equipment, installation and warranty details.` },
+    { label: 'Follow up', text: `${hi}just checking in on the solar quotation we sent. Do you have any questions, or would you like to book the installation?` },
+    { label: 'Ask budget', text: `${hi}this is ${me}. So we can recommend the right system, roughly what budget do you have in mind, and which appliances matter most during power cuts?` },
+  ].filter(Boolean);
+}
+
+function ReplyBox({ c, who, onSent }) {
+  const notify = useToast();
+  const { user } = useAuth();
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const me = (user?.name || '').split(' ')[0] || 'the team';
+
+  if (!c.is_whatsapp) return <div className="text-muted small mt-2">Website visitor: contact them on the number they gave{c.signals.contact ? ` (${c.signals.contact})` : ''}.</div>;
+  if (!c.window_open) {
+    return (
+      <div className="alert alert-warning small mt-2 mb-0">
+        Their last message is over 24 hours old, so WhatsApp only allows approved template messages. Call them, or use <b>Open in WhatsApp</b> from the business phone.
+      </div>
+    );
+  }
+  const send = async () => {
+    setSending(true);
+    try {
+      await api.post(`/whatsapp/clients/${encodeURIComponent(who)}/reply`, { text });
+      setText('');
+      notify('Sent on WhatsApp');
+      onSent();
+    } catch (err) {
+      notify(err.message, 'error');
+    } finally {
+      setSending(false);
+    }
+  };
+  return (
+    <div className="mt-2">
+      <div className="d-flex flex-wrap gap-1 mb-2">
+        {quickReplies(c, me).map((q) => (
+          <button key={q.label} type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setText(q.text)}>{q.label}</button>
+        ))}
+      </div>
+      <textarea className="form-control" rows={3} maxLength={1000} value={text} onChange={(e) => setText(e.target.value)}
+        placeholder="Write a reply. It is sent from your business WhatsApp number." aria-label="Reply" />
+      <div className="d-flex justify-content-between align-items-center mt-2 gap-2 flex-wrap">
+        <span className="text-muted small">Pause the bot above while you are chatting, so it does not answer for you.</span>
+        <button type="button" className="btn btn-primary" onClick={send} disabled={sending || !text.trim()}>
+          {sending ? <span className="spinner-border spinner-border-sm me-2" /> : <i className="fab fa-whatsapp me-2" />}Send
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Detail({ who, stages, canEdit, onSaved }) {
   const notify = useToast();
   const { data, loading, error, reload } = useApi(`/whatsapp/clients/${encodeURIComponent(who)}`);
@@ -132,7 +195,7 @@ function Detail({ who, stages, canEdit, onSaved }) {
           </div>
         ))}
       </div>
-      <div className="text-muted small mt-2">To reply, use <b>Open in WhatsApp</b>. Free-form replies are allowed within 24 hours of the client's last message.</div>
+      {canEdit && <ReplyBox c={c} who={who} onSent={() => { reload(); onSaved(); }} />}
     </>
   );
 }
