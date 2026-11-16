@@ -4,7 +4,7 @@ import { api } from './api.js';
 // Which permission group each API resource belongs to (mirrors auth.py on the server,
 // which is where permissions are actually enforced).
 const MODULE_OF = {
-  customers: 'customers',
+  customers: 'customers', whatsapp: 'customers',
   quotations: 'sales', invoices: 'sales', payments: 'sales',
   inventory: 'inventory', suppliers: 'inventory', pricing: 'inventory',
   financial: 'finance', 'financial-records': 'finance', 'financial-categories': 'finance',
@@ -42,6 +42,7 @@ export function AuthProvider({ children }) {
       user: s?.user || null,
       company: s?.company || null,
       roles: s?.roles || [],
+      features: s?.features || {},
       can,
       // endpoint like "/suppliers" -> may the user create/edit/delete there?
       canWrite: (endpoint) => can(MODULE_OF[String(endpoint).split('/')[1]] || 'admin', 'write'),

@@ -11,7 +11,7 @@ export default function Layout() {
   const [search, setSearch] = useState(false);
   const menuRef = useRef(null);
   const { pathname } = useLocation();
-  const { user, company, can, logout } = useAuth();
+  const { user, company, can, features, logout } = useAuth();
 
   useEffect(() => { setOpen(false); setMenu(false); }, [pathname]);
 
@@ -28,7 +28,7 @@ export default function Layout() {
 
   // Sections and tabs this user may open.
   const sections = SECTIONS
-    .map((s) => ({ ...s, tabs: s.tabs.filter((t) => t.module === 'any' || can(t.module)) }))
+    .map((s) => ({ ...s, tabs: s.tabs.filter((t) => (t.module === 'any' || can(t.module)) && (!t.feature || features[t.feature])) }))
     .filter((s) => s.tabs.length > 0);
   const current = sectionOf(pathname);
   const visible = sections.find((s) => s.key === current?.key);

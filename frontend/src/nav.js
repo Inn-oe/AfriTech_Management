@@ -3,6 +3,7 @@
 export const SECTIONS = [
   { key: 'dashboard', label: 'Dashboard', icon: 'fa-table-cells-large', tabs: [{ to: '/', label: 'Overview', module: 'dashboard', end: true }] },
   { key: 'customers', label: 'Customers', icon: 'fa-user-group', tabs: [{ to: '/customers', label: 'Customers', module: 'customers' }] },
+  { key: 'whatsapp', label: 'WhatsApp', icon: 'fa-comments', tabs: [{ to: '/whatsapp', label: 'Potential clients', module: 'customers', feature: 'whatsapp' }] },
   {
     key: 'sales', label: 'Sales & Quotes', icon: 'fa-file-lines',
     tabs: [

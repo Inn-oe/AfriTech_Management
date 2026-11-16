@@ -5,6 +5,7 @@ handled, every ORM query is automatically limited to that user's company and eve
 with it, so one company can never read or change another company's data.
 """
 import logging
+import os
 import re
 import time
 from contextlib import contextmanager
@@ -115,6 +116,7 @@ MODULE_OF = {
     'activities': 'operations', 'activity-types': 'operations', 'fuel-records': 'operations',
     'mileage-records': 'operations', 'journeys': 'operations', 'locations': 'operations',
     'dashboard': 'dashboard', 'meta': 'any', 'auth': 'any',
+    'whatsapp': 'customers',
     'users': 'admin', 'company': 'admin', 'audit-log': 'admin',
 }
 _ALL = {m: 'write' for m in ('customers', 'sales', 'inventory', 'finance', 'operations', 'dashboard')}
@@ -264,9 +266,16 @@ def _user_json(u):
             'last_login': u.last_login.isoformat() if u.last_login else None}
 
 
+def whatsapp_enabled(company_id):
+    """The WhatsApp bot serves one company: the one whose id is in WHATSAPP_COMPANY_ID."""
+    raw = os.environ.get('WHATSAPP_COMPANY_ID', '').strip()
+    return raw.isdigit() and int(raw) == company_id
+
+
 def _session_json(user):
     return {'user': _user_json(user), 'company': _company_json(user.company),
             'permissions': ROLES.get(user.role, {}),
+            'features': {'whatsapp': whatsapp_enabled(user.company_id)},
             'roles': [{'value': k, 'label': v} for k, v in ROLE_LABELS.items()]}
 
 

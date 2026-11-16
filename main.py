@@ -16,6 +16,7 @@ from whitenoise import WhiteNoise
 from database import Base, db_session, engine, init_db
 from auth import auth_bp
 from api import bp as api_bp
+from whatsapp import bp as whatsapp_bp
 from models import Company, User
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s %(message)s')
@@ -67,6 +68,7 @@ if os.path.isdir(FRONTEND_DIST):
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(api_bp)
+app.register_blueprint(whatsapp_bp)
 
 
 def _adopt_legacy_rows(conn, tenant_tables):
