@@ -13,7 +13,7 @@ const TEMP = {
   cold: { label: 'Cold', cls: 'secondary' },
 };
 
-const ago = (iso) => {
+export const ago = (iso) => {
   if (!iso) return 'never';
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   if (mins < 60) return `${Math.max(mins, 0)} min ago`;
@@ -21,7 +21,7 @@ const ago = (iso) => {
   return `${Math.round(mins / 1440)} days ago`;
 };
 
-const label = (c) => c.name || (c.who.startsWith('web:') ? `Website visitor ${c.who.slice(4, 10)}` : `+${c.who}`);
+export const label = (c) => c.name || (c.who.startsWith('web:') ? `Website visitor ${c.who.slice(4, 10)}` : `+${c.who}`);
 const Temp = ({ t }) => <span className={`badge text-bg-${TEMP[t].cls}`}>{TEMP[t].label}</span>;
 
 // Ready-made starting points for common replies; staff edit them before sending.
@@ -87,7 +87,7 @@ function ReplyBox({ c, who, onSent }) {
   );
 }
 
-function Detail({ who, stages, canEdit, onSaved }) {
+export function Detail({ who, stages, canEdit, onSaved }) {
   const notify = useToast();
   const { data, loading, error, reload } = useApi(`/whatsapp/clients/${encodeURIComponent(who)}`);
   const [form, setForm] = useState(null);

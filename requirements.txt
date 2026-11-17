@@ -1,0 +1,2 @@
+# Hosts that install from the repository root (e.g. a Render service created by hand) use this file.
+-r backend/requirements.txt

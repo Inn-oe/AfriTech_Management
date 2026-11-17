@@ -17,7 +17,8 @@ backend/            Flask API (Python)
     models.py       SQLAlchemy models
     database.py     engine / session / SQLite backups
     pdfs.py         invoice & quotation PDFs
-    whatsapp.py     WhatsApp tab + lead_rules.py scoring
+    whatsapp.py     WhatsApp section: enquiries (priority), potential clients, bot training
+    lead_rules.py   hot / warm / cold lead scoring
   tests/            pytest suite
   wsgi.py           entry point (gunicorn wsgi:app)
 frontend/           React app (Vite) -> builds to frontend/dist
@@ -25,6 +26,17 @@ render.yaml         Render blueprint (web service + WhatsApp bot)
 ```
 
 In production Flask serves the built React app and the API from one service.
+
+## WhatsApp bot
+
+A separate service (`solar-whatsapp-bot`) chats with customers in plain language using a trained NLP model
+and shares this platform's database. The **WhatsApp** section shows:
+
+* **Enquiries**: each customer with what they want (buy / enquiry / maintenance) and a priority, plus the chat and replies.
+* **Potential clients**: lead scoring and sales stages.
+* **Train the bot**: add example phrases and replies, review messages it was unsure about, test, and retrain.
+
+Needs `WHATSAPP_COMPANY_ID`, `WHATSAPP_BOT_URL` and `WHATSAPP_INTERNAL_KEY` (same value as the bot's `INTERNAL_KEY`).
 
 ## Local development
 
