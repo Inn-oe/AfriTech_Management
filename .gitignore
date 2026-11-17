@@ -124,3 +124,9 @@ sync_log.txt
 # React frontend
 frontend/node_modules/
 frontend/dist/
+
+# Local data
+backend/instance/
+backend/backups/
+.venv/
+.vscode/
