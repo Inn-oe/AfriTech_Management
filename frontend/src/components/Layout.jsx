@@ -37,7 +37,7 @@ export default function Layout() {
   return (
     <div className="app-shell">
       <nav className={`sidebar ${open ? 'open' : ''}`} aria-label="Main">
-        <Brand />
+        <Brand company={company} />
         <div className="nav-eyebrow">Workspace</div>
         <div className="sidebar-nav">
           {sections.map((s) => (

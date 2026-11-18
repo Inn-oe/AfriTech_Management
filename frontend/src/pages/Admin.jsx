@@ -61,7 +61,6 @@ export function CompanySettings() {
   const [values, setValues] = useState(null);
   const [saving, setSaving] = useState(false);
   const [logoBusy, setLogoBusy] = useState(false);
-  const [logoStamp, setLogoStamp] = useState(Date.now());
 
   useEffect(() => {
     if (company) setValues(Object.fromEntries(COMPANY_FIELDS.map((f) => [f.name, company[f.name] ?? ''])));
@@ -93,7 +92,6 @@ export function CompanySettings() {
       try {
         await api.put('/company/logo', { image: reader.result });
         await refresh();
-        setLogoStamp(Date.now());
         notify('Logo saved. It now appears on your quotations, invoices and receipts.');
       } catch (err) {
         notify(err.message, 'error');
@@ -122,7 +120,7 @@ export function CompanySettings() {
       <PageHeader title="Company Profile" icon="fa-building" subtitle="These details appear on your documents." />
       <div className="card mb-3"><div className="card-body d-flex flex-wrap align-items-center gap-3">
         {company?.has_logo
-          ? <img src={`/api/company/logo?v=${logoStamp}`} alt="Company logo" style={{ height: 80, width: 80, objectFit: 'contain' }} />
+          ? <img src={`/api/company/logo?v=${company.logo_v}`} alt="Company logo" style={{ height: 80, width: 80, objectFit: 'contain' }} />
           : <div className="d-flex align-items-center justify-content-center bg-light text-muted rounded" style={{ height: 80, width: 80 }}><i className="fas fa-image fa-lg" /></div>}
         <div className="flex-grow-1">
           <div className="fw-semibold">Company logo</div>

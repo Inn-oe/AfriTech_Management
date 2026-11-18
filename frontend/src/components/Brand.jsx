@@ -9,11 +9,22 @@ export function SunMark({ size = 38 }) {
   );
 }
 
-export function Brand({ to = '/' }) {
+/** The product name on the sign-in page; inside the app it shows the signed-in company's own logo and name. */
+export function Brand({ to = '/', company = null }) {
+  if (!company) {
+    return (
+      <a className="brand" href={to}>
+        <SunMark />
+        <span className="brand-name">Solar Business<br />Manager</span>
+      </a>
+    );
+  }
   return (
-    <a className="brand" href={to}>
-      <SunMark />
-      <span className="brand-name">Solar Business<br />Manager</span>
+    <a className="brand" href={to} title={company.name}>
+      {company.has_logo
+        ? <span className="brand-logo"><img src={`/api/company/logo?v=${company.logo_v}`} alt="" /></span>
+        : <SunMark />}
+      <span className="brand-name brand-company">{company.name}</span>
     </a>
   );
 }

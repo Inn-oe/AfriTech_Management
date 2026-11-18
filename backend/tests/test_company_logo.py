@@ -26,7 +26,7 @@ def test_upload_download_and_remove(client):
     assert client.get('/api/company/logo').status_code == 404
 
     ok = client.put('/api/company/logo', headers=HEADERS, json={'image': 'data:image/png;base64,' + base64.b64encode(PNG).decode()})
-    assert ok.status_code == 200 and ok.get_json()['has_logo'] is True
+    assert ok.status_code == 200 and ok.get_json()['has_logo'] is True and ok.get_json()['logo_v'] == len(PNG)
     got = client.get('/api/company/logo')
     assert got.status_code == 200 and got.mimetype == 'image/png' and got.data == PNG
     assert client.get('/api/auth/me').get_json()['company']['has_logo'] is True

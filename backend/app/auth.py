@@ -255,13 +255,15 @@ def _password(data, required=True):
     return password
 
 
-def _has_logo(c):
-    return bool(db_session.query(func.length(Company.logo)).filter(Company.id == c.id).scalar())
+def _logo_size(c):
+    """Size of the logo in bytes (0 = none). Also used to refresh the browser's cached copy when it changes."""
+    return db_session.query(func.length(Company.logo)).filter(Company.id == c.id).scalar() or 0
 
 
 def _company_json(c):
+    size = _logo_size(c)
     return {'id': c.id, 'name': c.name, 'phone': c.phone, 'email': c.email, 'address': c.address,
-            'banking_details': c.banking_details, 'currency': c.currency or 'USD', 'has_logo': _has_logo(c)}
+            'banking_details': c.banking_details, 'currency': c.currency or 'USD', 'has_logo': size > 0, 'logo_v': size}
 
 
 def _user_json(u):
