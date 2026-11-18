@@ -9,7 +9,7 @@ import secrets
 from datetime import timedelta
 
 from flask import Flask, jsonify, send_from_directory
-from sqlalchemy import inspect, text
+from sqlalchemy import LargeBinary, inspect, text
 from werkzeug.security import generate_password_hash
 from whitenoise import WhiteNoise
 
@@ -89,6 +89,7 @@ def ensure_schema():
     additions = {
         'payments': [('payer_name', 'VARCHAR(100)')],
         'invoices': [('quotation_id', 'INTEGER REFERENCES quotations(id)')],
+        'companies': [('logo', str(LargeBinary().compile(dialect=engine.dialect)))],
     }
     for t in tenant_tables:
         additions.setdefault(t, []).append(('company_id', 'INTEGER REFERENCES companies(id)'))

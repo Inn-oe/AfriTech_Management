@@ -6,7 +6,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import (HRFlowable, Paragraph, SimpleDocTemplate, Spacer,
+from reportlab.platypus import (HRFlowable, Image, Paragraph, SimpleDocTemplate, Spacer,
                                 Table, TableStyle)
 
 STYLES = getSampleStyleSheet()
@@ -45,20 +45,46 @@ def _lines(text):
     return '<br/>'.join(f'<b>{esc(line.strip())}</b>' for line in (text or '').splitlines() if line.strip())
 
 
+def _logo(company):
+    """The company logo as a flowable, or None (no logo, or a file reportlab cannot read)."""
+    blob = company.logo
+    if not blob:
+        return None
+    try:
+        return Image(io.BytesIO(blob), width=1.2 * inch, height=1.2 * inch, kind='proportional')
+    except Exception:
+        return None
+
+
 def _letterhead(company, title, number):
     name_style = ParagraphStyle('company', parent=STYLES['h1'], fontSize=22, textColor=colors.red, leading=26)
     small = ParagraphStyle('small', parent=STYLES['Normal'], fontSize=9, leading=11)
     small_right = ParagraphStyle('small_right', parent=small, alignment=2)
-    contact = _lines('\n'.join(filter(None, [company.phone, company.email])))
-    header = Table([
-        [Paragraph(f'<b>{esc(company.name)}</b>', name_style), ''],
-        [Paragraph(contact, small), Paragraph(_lines(company.address), small_right)],
-    ], colWidths=[4.3 * inch, 3.2 * inch])
-    header.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('SPAN', (0, 0), (1, 0)),
-        ('ALIGN', (1, 1), (1, 1), 'RIGHT'),
-    ]))
+    contact = _lines(chr(10).join(filter(None, [company.phone, company.email])))
+    name = Paragraph(f'<b>{esc(company.name)}</b>', name_style)
+    logo = _logo(company)
+    if logo is not None:
+        # logo on the left over both rows, name across the top, contact details and address underneath
+        header = Table([
+            [logo, name, ''],
+            ['', Paragraph(contact, small), Paragraph(_lines(company.address), small_right)],
+        ], colWidths=[1.3 * inch, 3.5 * inch, 2.7 * inch])
+        header.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('SPAN', (0, 0), (0, 1)),
+            ('SPAN', (1, 0), (2, 0)),
+            ('ALIGN', (2, 1), (2, 1), 'RIGHT'),
+        ]))
+    else:
+        header = Table([
+            [name, ''],
+            [Paragraph(contact, small), Paragraph(_lines(company.address), small_right)],
+        ], colWidths=[4.3 * inch, 3.2 * inch])
+        header.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('SPAN', (0, 0), (1, 0)),
+            ('ALIGN', (1, 1), (1, 1), 'RIGHT'),
+        ]))
     title_style = ParagraphStyle('doc_title', parent=STYLES['h2'], fontSize=16, spaceAfter=8)
     return [
         header,

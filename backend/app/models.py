@@ -1,5 +1,5 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Enum
-from sqlalchemy.orm import declared_attr, relationship
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Enum, LargeBinary
+from sqlalchemy.orm import declared_attr, deferred, relationship
 from .database import Base
 import enum
 from datetime import datetime
@@ -104,6 +104,7 @@ class Company(Base):
     email = Column(String(150))
     address = Column(String(300))
     banking_details = Column(String(500))
+    logo = deferred(Column(LargeBinary))   # PNG or JPEG bytes, printed on quotations, invoices and receipts
     currency = Column(String(10), default='USD')
     is_active = Column(Boolean, default=True, nullable=False)
     date_created = Column(DateTime, default=datetime.utcnow)

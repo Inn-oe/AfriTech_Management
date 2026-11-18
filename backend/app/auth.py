@@ -4,6 +4,7 @@ Every business table carries a company_id (models.TenantMixin). While a logged-i
 handled, every ORM query is automatically limited to that user's company and every new row is stamped
 with it, so one company can never read or change another company's data.
 """
+import base64
 import logging
 import os
 import re
@@ -11,8 +12,8 @@ import time
 from contextlib import contextmanager
 from datetime import datetime
 
-from flask import Blueprint, g, has_request_context, jsonify, request, session
-from sqlalchemy import event
+from flask import Blueprint, Response, g, has_request_context, jsonify, request, session
+from sqlalchemy import event, func
 from sqlalchemy.orm import Session, with_loader_criteria
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -254,9 +255,13 @@ def _password(data, required=True):
     return password
 
 
+def _has_logo(c):
+    return bool(db_session.query(func.length(Company.logo)).filter(Company.id == c.id).scalar())
+
+
 def _company_json(c):
     return {'id': c.id, 'name': c.name, 'phone': c.phone, 'email': c.email, 'address': c.address,
-            'banking_details': c.banking_details, 'currency': c.currency or 'USD'}
+            'banking_details': c.banking_details, 'currency': c.currency or 'USD', 'has_logo': _has_logo(c)}
 
 
 def _user_json(u):
@@ -376,6 +381,50 @@ def company_update():
     c.currency = (_text(data, 'currency', 10) or 'USD').upper()
     db_session.commit()
     return jsonify(_company_json(c))
+
+
+LOGO_TYPES = {bytes.fromhex('89504e470d0a1a0a'): 'image/png', bytes.fromhex('ffd8ff'): 'image/jpeg'}
+MAX_LOGO_BYTES = 1_200_000
+
+
+def _logo_mime(blob):
+    return next((mime for magic, mime in LOGO_TYPES.items() if blob.startswith(magic)), None)
+
+
+@auth_bp.get('/company/logo')
+def company_logo():
+    blob = g.company.logo
+    if not blob:
+        raise ApiError('This company has no logo yet.', 404)
+    resp = Response(blob, mimetype=_logo_mime(blob) or 'image/png')
+    resp.headers['Cache-Control'] = 'private, max-age=300'
+    return resp
+
+
+@auth_bp.put('/company/logo')
+def company_logo_set():
+    """Body: {"image": "<base64 or data: URL of a PNG/JPEG>"}. Printed on every document."""
+    raw = (request.get_json(silent=True) or {}).get('image') or ''
+    if raw.startswith('data:') and ',' in raw:
+        raw = raw.split(',', 1)[1]
+    try:
+        blob = base64.b64decode(raw, validate=True)
+    except (ValueError, TypeError):
+        raise ApiError('That is not a valid image.')
+    if not _logo_mime(blob):
+        raise ApiError('Please use a PNG or JPEG image.')
+    if len(blob) > MAX_LOGO_BYTES:
+        raise ApiError('The logo is too big (1 MB at most).')
+    g.company.logo = blob
+    db_session.commit()
+    return jsonify(_company_json(g.company))
+
+
+@auth_bp.delete('/company/logo')
+def company_logo_remove():
+    g.company.logo = None
+    db_session.commit()
+    return jsonify(_company_json(g.company))
 
 
 # ---------------------------------------------------------------------------

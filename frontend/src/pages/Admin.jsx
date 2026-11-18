@@ -60,6 +60,8 @@ export function CompanySettings() {
   const notify = useToast();
   const [values, setValues] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoStamp, setLogoStamp] = useState(Date.now());
 
   useEffect(() => {
     if (company) setValues(Object.fromEntries(COMPANY_FIELDS.map((f) => [f.name, company[f.name] ?? ''])));
@@ -79,9 +81,60 @@ export function CompanySettings() {
     }
   };
 
+  const pickLogo = (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!/^image\/(png|jpeg)$/.test(file.type)) { notify('Please choose a PNG or JPEG image.', 'error'); return; }
+    if (file.size > 1000000) { notify('The logo is too big (1 MB at most).', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      setLogoBusy(true);
+      try {
+        await api.put('/company/logo', { image: reader.result });
+        await refresh();
+        setLogoStamp(Date.now());
+        notify('Logo saved. It now appears on your quotations, invoices and receipts.');
+      } catch (err) {
+        notify(err.message, 'error');
+      } finally {
+        setLogoBusy(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeLogo = async () => {
+    setLogoBusy(true);
+    try {
+      await api.del('/company/logo');
+      await refresh();
+      notify('Logo removed');
+    } catch (err) {
+      notify(err.message, 'error');
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+
   return (
     <>
       <PageHeader title="Company Profile" icon="fa-building" subtitle="These details appear on your documents." />
+      <div className="card mb-3"><div className="card-body d-flex flex-wrap align-items-center gap-3">
+        {company?.has_logo
+          ? <img src={`/api/company/logo?v=${logoStamp}`} alt="Company logo" style={{ height: 80, width: 80, objectFit: 'contain' }} />
+          : <div className="d-flex align-items-center justify-content-center bg-light text-muted rounded" style={{ height: 80, width: 80 }}><i className="fas fa-image fa-lg" /></div>}
+        <div className="flex-grow-1">
+          <div className="fw-semibold">Company logo</div>
+          <div className="small text-muted">PNG or JPEG, up to 1 MB. Printed at the top of quotations, invoices and receipts.</div>
+        </div>
+        <label className={`btn btn-outline-primary mb-0 ${logoBusy ? 'disabled' : ''}`}>
+          {logoBusy ? <span className="spinner-border spinner-border-sm me-2" /> : <i className="fas fa-upload me-2" />}
+          {company?.has_logo ? 'Change logo' : 'Upload logo'}
+          <input type="file" accept="image/png,image/jpeg" hidden onChange={pickLogo} disabled={logoBusy} />
+        </label>
+        {company?.has_logo && <button type="button" className="btn btn-outline-danger" onClick={removeLogo} disabled={logoBusy}>Remove</button>}
+      </div></div>
       <div className="card"><div className="card-body">
         {!values ? <Loading /> : (
           <form onSubmit={save}>
