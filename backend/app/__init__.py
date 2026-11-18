@@ -14,6 +14,7 @@ from werkzeug.security import generate_password_hash
 from whitenoise import WhiteNoise
 
 from .database import Base, db_session, engine, init_db
+from . import giebee_import
 from .auth import auth_bp
 from .api import bp as api_bp
 from .whatsapp import bp as whatsapp_bp
@@ -132,6 +133,8 @@ def create_app():
         ensure_schema()
     except Exception:  # keep the app bootable so /_health can report the problem
         log.exception('Database initialisation failed')
+    else:
+        giebee_import.start_in_background()   # no-op unless GIEBEE_IMPORT_SOURCE_URL is set
 
     @app.teardown_appcontext
     def shutdown_session(exception=None):
