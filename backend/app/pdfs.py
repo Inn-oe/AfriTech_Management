@@ -10,7 +10,7 @@ from reportlab.platypus import (HRFlowable, Image, Paragraph, SimpleDocTemplate,
                                 Table, TableStyle)
 
 STYLES = getSampleStyleSheet()
-ITEM_COLS = [0.4 * inch, 1.1 * inch, 3.0 * inch, 0.7 * inch, 1 * inch, 1.3 * inch]
+ITEM_COLS = [0.4 * inch, 1.2 * inch, 2.9 * inch, 0.7 * inch, 1 * inch, 1.3 * inch]   # Giebee's invoice column widths
 
 
 def money(value):
