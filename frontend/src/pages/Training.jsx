@@ -16,8 +16,15 @@ function ModelCard({ canEdit, dirty, onTrained }) {
   const train = async () => {
     setBusy(true);
     try {
-      const info = await api.post('/whatsapp/training/train');
-      notify(info.trained ? `Trained on ${info.examples} phrases` : (info.reason || 'Could not train'), info.trained ? 'success' : 'error');
+      let info = await api.post('/whatsapp/training/train');
+      // Training takes about a minute on a small server, so the bot trains in the background and we poll.
+      for (let i = 0; info.training && i < 100; i += 1) {
+        await new Promise((r) => setTimeout(r, 3000));
+        try { info = await api.get('/whatsapp/training/status'); } catch { /* the bot may be busy; keep waiting */ }
+      }
+      if (info.training) notify('Still training. Check this page again in a minute.', 'info');
+      else if (info.train_error) notify(info.train_error, 'error');
+      else notify(info.trained ? `Trained on ${info.examples} phrases` : (info.reason || 'Could not train'), info.trained ? 'success' : 'error');
       reload();
       onTrained();
     } catch (err) {
@@ -37,7 +44,7 @@ function ModelCard({ canEdit, dirty, onTrained }) {
         </div>
         {dirty && <div className="small text-warning-emphasis mt-1"><i className="fas fa-circle-exclamation me-1" />You changed examples: press Train now so the bot learns them.</div>}
       </div>
-      {canEdit && <button type="button" className="btn btn-primary" onClick={train} disabled={busy}>{busy ? <span className="spinner-border spinner-border-sm me-2" /> : <i className="fas fa-brain me-2" />}Train now</button>}
+      {canEdit && <button type="button" className="btn btn-primary" onClick={train} disabled={busy || info.training}>{busy || info.training ? <span className="spinner-border spinner-border-sm me-2" /> : <i className="fas fa-brain me-2" />}{busy || info.training ? 'Training…' : 'Train now'}</button>}
     </div></div>
   );
 }
