@@ -41,6 +41,9 @@ function ModelCard({ canEdit, dirty, onTrained }) {
         <div className="small text-muted">
           {info.trained ? <>{info.model} · {info.backend} · {info.examples} phrases · {info.intents} intents{info.accuracy != null && <> · held-out accuracy <b>{pct(info.accuracy)}</b></>}</> : 'Add example phrases below, then press Train now.'}
           {info.note && <div className="text-warning-emphasis">{info.note}</div>}
+          {info.llm && (info.llm.enabled
+            ? <div>AI fallback: <b>{info.llm.model}</b> reads messages the quick model is unsure about{info.llm.errors > 0 && <span className="text-warning-emphasis"> · {info.llm.errors} failed calls{info.llm.last_error && <> (last: {info.llm.last_error})</>}</span>}</div>
+            : <div>AI fallback: off (set LLM_API_KEY on the bot to let a language model read unclear messages)</div>)}
         </div>
         {dirty && <div className="small text-warning-emphasis mt-1"><i className="fas fa-circle-exclamation me-1" />You changed examples: press Train now so the bot learns them.</div>}
       </div>
@@ -79,7 +82,7 @@ function TryIt() {
         <div className="mt-3">
           <div className={`alert ${res.understood ? 'alert-success' : 'alert-warning'} py-2 mb-2`}>
             {res.understood
-              ? <>Understood as <b>{res.intent}</b> ({pct(res.confidence)} sure). Category: <b>{CAT_LABEL[res.category]}</b>, priority: <b>{res.priority}</b>.</>
+              ? <>Understood as <b>{res.intent}</b> {res.via === 'llm' ? <>(by the AI language model; the quick model was unsure)</> : <>({pct(res.confidence)} sure)</>}. Category: <b>{CAT_LABEL[res.category]}</b>, priority: <b>{res.priority}</b>.</>
               : <>The bot is <b>not sure</b> (best guess: {res.guess || 'none'}, {pct(res.confidence)}). It would ask the customer to explain, and a second miss goes to your team. Add this message as an example below.</>}
           </div>
           {res.reasons?.length > 0 && <div className="small mb-2"><b>Priority reasons:</b> {res.reasons.join(' · ')}</div>}
