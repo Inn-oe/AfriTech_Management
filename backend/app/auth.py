@@ -19,6 +19,7 @@ from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .database import db_session
+from . import usage
 from .models import AuditLog, Company, StockTransaction, TenantMixin, User
 
 log = logging.getLogger('erp')
@@ -198,10 +199,28 @@ def _audit(response):
     return response
 
 
+def _count_usage(response):
+    """Count the call for the company's daily usage (see usage.py)."""
+    user = g.get('user')
+    if user is not None:
+        usage.record(user.company_id, user.id, request.method not in SAFE_METHODS)
+    return response
+
+
+def platform_operators():
+    """Emails (lower case) of the people who run the platform itself, from PLATFORM_ADMIN_EMAILS (comma separated)."""
+    return {e.strip().lower() for e in os.environ.get('PLATFORM_ADMIN_EMAILS', '').split(',') if e.strip()}
+
+
+def is_operator(user):
+    return user is not None and user.email.lower() in platform_operators()
+
+
 def protect(bp):
-    """Require login + permission on every route of a blueprint, and audit its changes."""
+    """Require login + permission on every route of a blueprint, audit its changes and count the usage."""
     bp.before_request(_guard)
     bp.after_request(_audit)
+    bp.after_request(_count_usage)
     bp.register_error_handler(Exception, _handle_error)
 
 
@@ -282,7 +301,7 @@ def whatsapp_enabled(company_id):
 def _session_json(user):
     return {'user': _user_json(user), 'company': _company_json(user.company),
             'permissions': ROLES.get(user.role, {}),
-            'features': {'whatsapp': whatsapp_enabled(user.company_id)},
+            'features': {'whatsapp': whatsapp_enabled(user.company_id), 'operator': is_operator(user)},
             'roles': [{'value': k, 'label': v} for k, v in ROLE_LABELS.items()]}
 
 

@@ -53,6 +53,7 @@ export const SECTIONS = [
       { to: '/activity-types', label: 'Job types', module: 'operations' },
       { to: '/financial-categories', label: 'Finance categories', module: 'finance' },
       { to: '/locations', label: 'Locations', module: 'operations' },
+      { to: '/platform-usage', label: 'Platform usage', module: 'any', feature: 'operator' },
       { to: '/account', label: 'My account', module: 'any' },
     ],
   },

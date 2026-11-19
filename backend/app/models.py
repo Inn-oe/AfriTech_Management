@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Enum, LargeBinary
+from sqlalchemy import Column, Date, Integer, String, Float, DateTime, ForeignKey, Boolean, Enum, LargeBinary
 from sqlalchemy.orm import declared_attr, deferred, relationship
 from .database import Base
 import enum
@@ -405,3 +405,20 @@ class Payment(TenantMixin, Base):
     reference_number = Column(String(100))
     notes = Column(String(500))
     date_created = Column(DateTime, default=datetime.utcnow)
+
+
+class UsageDaily(Base):
+    """How much each company used the platform on one day (see usage.py). The basis for pricing the software."""
+    __tablename__ = 'usage_daily'
+    company_id = Column(Integer, ForeignKey('companies.id'), primary_key=True)
+    day = Column(Date, primary_key=True)
+    requests = Column(Integer, default=0, nullable=False)   # every API call by a logged-in user
+    writes = Column(Integer, default=0, nullable=False)     # of which changed something (POST/PUT/PATCH/DELETE)
+
+
+class UsageUser(Base):
+    """One row per company user who was active on a day, so active users can be counted."""
+    __tablename__ = 'usage_users'
+    company_id = Column(Integer, primary_key=True)
+    day = Column(Date, primary_key=True)
+    user_id = Column(Integer, primary_key=True)

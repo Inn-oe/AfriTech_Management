@@ -15,6 +15,7 @@ from whitenoise import WhiteNoise
 
 from .database import Base, db_session, engine, init_db
 from . import giebee_import
+from .platform_usage import platform_bp
 from .auth import auth_bp
 from .api import bp as api_bp
 from .whatsapp import bp as whatsapp_bp
@@ -129,6 +130,7 @@ def create_app():
     app.register_blueprint(auth_bp)
     app.register_blueprint(api_bp)
     app.register_blueprint(whatsapp_bp)
+    app.register_blueprint(platform_bp)
 
     try:
         ensure_schema()

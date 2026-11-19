@@ -13,6 +13,7 @@ import DocumentForm from './pages/DocumentForm.jsx';
 import DocumentView from './pages/DocumentView.jsx';
 import Payments from './pages/Payments.jsx';
 import Projects from './pages/Projects.jsx';
+import PlatformUsage from './pages/PlatformUsage.jsx';
 import Reports from './pages/Reports.jsx';
 import Enquiries from './pages/Enquiries.jsx';
 import Training from './pages/Training.jsx';
@@ -80,6 +81,7 @@ export default function App() {
           <Route path="payments" element={<Payments />} />
           <Route path="projects" element={<Projects />} />
           <Route path="reports" element={<Reports />} />
+          <Route path="platform-usage" element={<PlatformUsage />} />
           <Route path="whatsapp" element={<WhatsApp />} />
           <Route path="enquiries" element={<Enquiries />} />
           <Route path="training" element={<Training />} />

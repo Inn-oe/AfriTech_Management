@@ -71,3 +71,11 @@ Tests: `cd backend && pytest`. Production build check: `cd frontend && npm run b
 
 `render.yaml` builds the frontend, installs `backend/requirements.txt` and runs
 `gunicorn --chdir backend wsgi:app`. Health check: `/_health`.
+
+## Platform usage (for pricing the software)
+
+Every API call by a signed-in person is counted per company and day (`usage_daily`, `usage_users`), in memory and
+saved in small batches. **Settings ▸ Platform usage** shows each company's requests, active users, new records,
+stored records and WhatsApp messages per day, with a price calculator. It is only listed for the emails in
+`PLATFORM_ADMIN_EMAILS` (comma separated); everyone else gets a 403 from `/api/platform/usage`.
+

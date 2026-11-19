@@ -19,3 +19,11 @@ def app():
 @pytest.fixture()
 def client(app):
     return app.test_client()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_rate_limits():
+    """Sign-ups and logins are rate limited per connection; every test starts with a clean slate."""
+    from app import auth
+    auth._HITS.clear()
+    yield
