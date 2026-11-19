@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 
 import sqlalchemy as sa
 from flask import Blueprint, g, jsonify, request, send_file
+from sqlalchemy.orm import selectinload
 
 from . import pdfs
 from .auth import ApiError, find, protect, unscoped
@@ -720,7 +721,9 @@ def _write_quotation_items(q, lines):
 
 @bp.get('/quotations')
 def quotations_list():
-    items = db_session.query(quotation).order_by(quotation.date_created.desc()).all()
+    # load the customers and item lists together (one query each) instead of one query per quotation
+    items = db_session.query(quotation).options(selectinload(quotation.customer), selectinload(quotation.items)) \
+        .order_by(quotation.date_created.desc()).all()
     invoice_map = {qid: iid for iid, qid in
                    db_session.query(Invoice.id, Invoice.quotation_id).filter(Invoice.quotation_id.isnot(None))}
     return jsonify([_serialize_quotation(q, invoice_map=invoice_map) for q in items])
@@ -876,7 +879,8 @@ def _write_invoice_items(inv, lines, ref_type, note):
 
 @bp.get('/invoices')
 def invoices_list():
-    q = db_session.query(Invoice).order_by(Invoice.date_created.desc())
+    q = db_session.query(Invoice).options(selectinload(Invoice.customer), selectinload(Invoice.activity_type),
+                                          selectinload(Invoice.quotation)).order_by(Invoice.date_created.desc())
     if request.args.get('customer_id'):
         q = q.filter(Invoice.customer_id == request.args['customer_id'])
     return jsonify([_serialize_invoice(i) for i in q.all()])
@@ -1004,7 +1008,8 @@ def payments_create(pk):
 
 @bp.get('/payments')
 def payments_list():
-    items = db_session.query(Payment).order_by(Payment.payment_date.desc()).all()
+    items = db_session.query(Payment).options(selectinload(Payment.invoice).selectinload(Invoice.customer)) \
+        .order_by(Payment.payment_date.desc()).all()
     return jsonify([_serialize_payment(p) for p in items])
 
 

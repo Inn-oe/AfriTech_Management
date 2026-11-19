@@ -6,9 +6,10 @@ for every other path. Each solar company that signs up gets its own isolated dat
 import logging
 import os
 import secrets
+import time
 from datetime import timedelta
 
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, g, jsonify, request, send_from_directory
 from sqlalchemy import LargeBinary, inspect, text
 from werkzeug.security import generate_password_hash
 from whitenoise import WhiteNoise
@@ -27,6 +28,7 @@ log = logging.getLogger('erp')
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND_DIST = os.path.join(os.path.dirname(BACKEND_DIR), 'frontend', 'dist')
 ON_SERVER = bool(os.environ.get('RENDER') or os.environ.get('VERCEL'))
+SLOW_REQUEST_MS = 1000     # calls slower than this are written to the log
 
 # Keys that were once committed to the public repository must never sign a login cookie.
 _LEAKED_KEYS = {'solar_company_secret_key', '8dcd80847a420f609fe3c8aaf6a61d09'}
@@ -143,6 +145,22 @@ def create_app():
     def shutdown_session(exception=None):
         db_session.remove()
 
+
+    @app.before_request
+    def start_timer():
+        g.started = time.perf_counter()
+
+    @app.after_request
+    def time_the_request(resp):
+        """Server-Timing header for every call, and a log line when one is slow (so slowness shows up in the logs)."""
+        started = g.get('started')
+        if started is not None:
+            ms = (time.perf_counter() - started) * 1000
+            resp.headers['Server-Timing'] = f'app;dur={ms:.0f}'
+            if ms >= SLOW_REQUEST_MS and not request.path.startswith('/assets/'):
+                log.warning('Slow request: %s %s took %.1f s (status %s)', request.method, request.path, ms / 1000,
+                            resp.status_code)
+        return resp
 
     @app.after_request
     def security_headers(resp):
