@@ -8,46 +8,23 @@ import { useApi } from '../hooks.js';
 const CAT_LABEL = { purchase: 'Wants to buy', enquiry: 'Enquiry', maintenance: 'Maintenance', other: 'Chit-chat' };
 const pct = (v) => `${Math.round((v || 0) * 100)}%`;
 
-/** Status of the model plus the Train now button. Changes to examples only take effect after training. */
-function ModelCard({ canEdit, dirty, onTrained }) {
-  const notify = useToast();
-  const { data, reload } = useApi('/whatsapp/training/status');
-  const [busy, setBusy] = useState(false);
-  const train = async () => {
-    setBusy(true);
-    try {
-      let info = await api.post('/whatsapp/training/train');
-      // Training takes about a minute on a small server, so the bot trains in the background and we poll.
-      for (let i = 0; info.training && i < 100; i += 1) {
-        await new Promise((r) => setTimeout(r, 3000));
-        try { info = await api.get('/whatsapp/training/status'); } catch { /* the bot may be busy; keep waiting */ }
-      }
-      if (info.training) notify('Still training. Check this page again in a minute.', 'info');
-      else if (info.train_error) notify(info.train_error, 'error');
-      else notify(info.trained ? `Trained on ${info.examples} phrases` : (info.reason || 'Could not train'), info.trained ? 'success' : 'error');
-      reload();
-      onTrained();
-    } catch (err) {
-      notify(err.message, 'error');
-    } finally {
-      setBusy(false);
-    }
-  };
+/** Status of the model. Staff add phrases here; the administrator retrains the bot (on their own computer) to apply them. */
+function ModelCard({ dirty }) {
+  const { data } = useApi('/whatsapp/training/status');
   const info = data || {};
   return (
     <div className="card mb-3"><div className="card-body d-flex flex-wrap justify-content-between align-items-center gap-3">
       <div>
         <div className="fw-semibold">Language model {info.connected === false ? <span className="badge text-bg-danger ms-1">bot not reachable</span> : info.trained ? <span className="badge text-bg-success ms-1">trained</span> : <span className="badge text-bg-warning ms-1">not trained</span>}</div>
         <div className="small text-muted">
-          {info.trained ? <>{info.model} · {info.backend} · {info.examples} phrases · {info.intents} intents{info.accuracy != null && <> · held-out accuracy <b>{pct(info.accuracy)}</b></>}</> : 'Add example phrases below, then press Train now.'}
+          {info.trained ? <>{info.model} · {info.backend} · {info.examples} phrases · {info.intents} intents{info.accuracy != null && <> · held-out accuracy <b>{pct(info.accuracy)}</b></>}</> : 'Add example phrases below. The administrator retrains the bot to apply them.'}
           {info.note && <div className="text-warning-emphasis">{info.note}</div>}
           {info.llm && (info.llm.enabled
             ? <div>AI fallback: <b>{info.llm.model}</b> reads messages the quick model is unsure about{info.llm.errors > 0 && <span className="text-warning-emphasis"> · {info.llm.errors} failed calls{info.llm.last_error && <> (last: {info.llm.last_error})</>}</span>}</div>
             : <div>AI fallback: off (set LLM_API_KEY on the bot to let a language model read unclear messages)</div>)}
         </div>
-        {dirty && <div className="small text-warning-emphasis mt-1"><i className="fas fa-circle-exclamation me-1" />You changed examples: press Train now so the bot learns them.</div>}
+        {dirty && <div className="small text-warning-emphasis mt-1"><i className="fas fa-circle-exclamation me-1" />You changed examples. They are saved; the bot learns them when the administrator retrains it.</div>}
       </div>
-      {canEdit && <button type="button" className="btn btn-primary" onClick={train} disabled={busy || info.training}>{busy || info.training ? <span className="spinner-border spinner-border-sm me-2" /> : <i className="fas fa-brain me-2" />}{busy || info.training ? 'Training…' : 'Train now'}</button>}
     </div></div>
   );
 }
@@ -105,7 +82,7 @@ function Review({ intents, canEdit, onChanged }) {
   const send = async (item, intent) => {
     try {
       await api.post(`/whatsapp/training/unmatched/${item.id}`, { intent });
-      notify(intent === 'ignore' ? 'Dismissed' : 'Added as an example. Press Train now to apply.');
+      notify(intent === 'ignore' ? 'Dismissed' : 'Added as an example. It applies when the administrator retrains the bot.');
       reload();
       onChanged();
     } catch (err) {
@@ -159,7 +136,7 @@ function IntentEditor({ intent, meta, canEdit, onSaved, onDeleted, onExamples })
     try {
       const replies = form.replies.split(/\n-{3,}\n/).map((x) => x.trim()).filter(Boolean);
       await api.put(`/whatsapp/training/intents/${form.name}`, { ...form, replies });
-      notify('Saved. Press Train now to apply.');
+      notify('Saved. It applies when the administrator retrains the bot.');
       onSaved(form.name);
     } catch (err) {
       notify(err.message, 'error');
@@ -177,7 +154,7 @@ function IntentEditor({ intent, meta, canEdit, onSaved, onDeleted, onExamples })
   const addExamples = async () => {
     try {
       const r = await api.post('/whatsapp/training/examples', { intent: form.name, text: newText });
-      notify(`${r.added} added${r.skipped ? `, ${r.skipped} already there` : ''}. Press Train now to apply.`);
+      notify(`${r.added} added${r.skipped ? `, ${r.skipped} already there` : ''}. They apply when the administrator retrains the bot.`);
       setNewText('');
       setExamples((await api.get(`/whatsapp/training/intents/${form.name}/examples`)).examples);
       onExamples();
@@ -258,7 +235,7 @@ export default function Training() {
     <>
       <PageHeader title="Train the bot" subtitle="Teach the WhatsApp assistant what customers mean and how to answer. It learns from the example phrases you give it." />
       {!canEdit && <div className="alert alert-info">You can look around, but only owners, admins and managers can change the bot’s training.</div>}
-      <ModelCard canEdit={canEdit} dirty={dirty} onTrained={() => { setDirty(false); reload(); }} />
+      <ModelCard dirty={dirty} />
 
       <ul className="nav nav-tabs mb-3">
         {[['intents', `What the bot understands (${intents.length})`], ['review', `Review messages${data.unmatched ? ` (${data.unmatched})` : ''}`], ['test', 'Test a message']].map(([k, t]) => (

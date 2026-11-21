@@ -472,12 +472,6 @@ def training_unmatched_label(item_id):
     return jsonify(ok=True)
 
 
-@bp.post('/training/train')
-def training_train():
-    _need_trainer()
-    return jsonify(_bot_call('/internal/nlu/train'))
-
-
 @bp.post('/training/test')
 def training_test():
     _need_trainer()
