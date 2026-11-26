@@ -305,6 +305,16 @@ h1, h2, h3, h4, h5, h6 { letter-spacing: -0.02em; }
 .lp-trade { background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 1.5rem; border-bottom: 5px solid var(--tone); box-shadow: 0 8px 24px rgba(15, 42, 61, 0.05); transition: transform 0.15s, box-shadow 0.15s; }
 .lp-trade:hover, .lp-trade.active { transform: translateY(-4px); box-shadow: 0 16px 34px rgba(15, 42, 61, 0.1); }
 .lp-trade .lp-ico { background: var(--tone-soft); color: var(--tone); }
+/* Trade cards with a photo of the work on top; the trade icon sits on the photo's bottom edge. */
+.lp-trade.has-photo { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.lp-photo { position: relative; aspect-ratio: 8 / 5; background: var(--tone-soft); }
+.lp-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.lp-photo .lp-ico { position: absolute; left: 1.25rem; bottom: -27px; margin: 0; border: 4px solid #fff; box-shadow: 0 6px 16px rgba(15, 42, 61, 0.15); }
+.lp-trade-body { padding: 2.2rem 1.5rem 1.5rem; }
+@media (max-width: 575.98px) {
+  .lp-photo .lp-ico { width: 44px; height: 44px; font-size: 1.1rem; bottom: -22px; left: 0.9rem; }
+  .lp-trade-body { padding: 1.8rem 1rem 1rem; }
+}
 .tone-amber { --tone: #e9a21f; --tone-soft: #fff3d9; }
 .tone-teal { --tone: #0f7b5a; --tone-soft: #e1f4ec; }
 .tone-blue { --tone: #1e7fd0; --tone-soft: #e2f0fc; }

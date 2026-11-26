@@ -6,13 +6,17 @@ import { Brand, PRODUCT_NAME } from '../components/Brand.jsx';
 // The trades the platform is built for. `noun` fills the hero sentence when a chip is picked.
 const TRADES = [
   { key: 'solar', label: 'Solar', icon: 'fa-solar-panel', tone: 'amber', noun: 'solar',
-    title: 'Solar installers', text: 'Quote systems from your own price list, track installations and collect deposits and instalments.' },
+    title: 'Solar installers', text: 'Quote systems from your own price list, track installations and collect deposits and instalments.',
+    photo: '/landing/solar.jpg', photoAlt: 'Technician in a hard hat installing solar panels' },
   { key: 'cctv', label: 'CCTV', icon: 'fa-video', tone: 'teal', noun: 'CCTV and security',
-    title: 'CCTV installers', text: 'Handle camera quotes, site installs, maintenance visits and customer follow-ups.' },
+    title: 'CCTV installers', text: 'Handle camera quotes, site installs, maintenance visits and customer follow-ups.',
+    photo: '/landing/cctv.jpg', photoAlt: 'Technician fitting a security camera to a wall' },
   { key: 'water', label: 'Borehole & Water', icon: 'fa-droplet', tone: 'blue', noun: 'borehole and water',
-    title: 'Borehole & water', text: 'Track drilling jobs, pump installs, travel to site and every payment for each borehole.' },
+    title: 'Borehole & water', text: 'Track drilling jobs, pump installs, travel to site and every payment for each borehole.',
+    photo: '/landing/borehole.jpg', photoAlt: 'Worker beside a borehole drilling rig' },
   { key: 'alarms', label: 'Alarms & Access', icon: 'fa-shield-halved', tone: 'red', noun: 'alarm and access-control',
-    title: 'Alarms & access control', text: 'Manage alarm, intruder, electric-fence and access-control jobs from quote to handover.' },
+    title: 'Alarms & access control', text: 'Manage alarm, intruder, electric-fence and access-control jobs from quote to handover.',
+    photo: '/landing/alarms.jpg', photoAlt: 'Technician in a hard hat fitting a security device to a wall' },
 ];
 
 const FEATURES = [
@@ -261,10 +265,15 @@ export default function AuthPage({ mode }) {
           <p className="lp-sub">Run your solar, security, water or alarm business with the tools you need to win jobs, manage work, get paid and grow.</p>
           <div className="lp-grid lp-grid-4">
             {TRADES.map((t) => (
-              <div key={t.key} className={`lp-trade tone-${t.tone}${trade === t.key ? ' active' : ''}`}>
-                <span className="lp-ico"><i className={`fas ${t.icon}`} /></span>
-                <h3>{t.title}</h3>
-                <p>{t.text}</p>
+              <div key={t.key} className={`lp-trade has-photo tone-${t.tone}${trade === t.key ? ' active' : ''}`}>
+                <div className="lp-photo">
+                  <img src={t.photo} alt={t.photoAlt} loading="lazy" width="800" height="500" />
+                  <span className="lp-ico"><i className={`fas ${t.icon}`} /></span>
+                </div>
+                <div className="lp-trade-body">
+                  <h3>{t.title}</h3>
+                  <p>{t.text}</p>
+                </div>
               </div>
             ))}
           </div>
@@ -349,7 +358,7 @@ export default function AuthPage({ mode }) {
       </section>
 
       <footer className="lp-foot">
-        <div className="lp-wrap">© {new Date().getFullYear()} {PRODUCT_NAME} · Installation business management · Built for installers across Zimbabwe and beyond.</div>
+        <div className="lp-wrap">© {new Date().getFullYear()} {PRODUCT_NAME} · Installation business management · Built for installers across Zimbabwe and beyond. · Photos: Unsplash &amp; Pexels</div>
       </footer>
     </div>
   );
