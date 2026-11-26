@@ -27,6 +27,7 @@ export default function Dashboard() {
     quotes.open_count > 0 && { icon: 'fa-file-lines', title: 'Follow up open quotations', sub: `${quotes.open_count} awaiting a decision`, tag: money(quotes.open_value), to: '/quotations', tone: 'warning' },
     jobs.today > 0 && { icon: 'fa-screwdriver-wrench', title: 'Jobs scheduled today', sub: `${jobs.today} on the calendar`, tag: 'Today', to: '/projects', tone: 'info' },
     lowStock.length > 0 && { icon: 'fa-cube', title: 'Reorder low stock', sub: `${lowStock.length} item${lowStock.length > 1 ? 's' : ''} at or below minimum`, tag: 'Urgent', to: '/inventory', tone: 'danger' },
+    data.unpriced_stock_in?.count > 0 && { icon: 'fa-tag', title: 'Add missing buying prices', sub: `${data.unpriced_stock_in.count} item${data.unpriced_stock_in.count > 1 ? 's' : ''} stocked in without a price (${data.unpriced_stock_in.invoices} invoice${data.unpriced_stock_in.invoices > 1 ? 's' : ''})`, tag: 'Warning', to: `/invoices/${data.unpriced_stock_in.invoice_id}`, tone: 'warning' },
     data.overdue_invoices > 0 && { icon: 'fa-credit-card', title: 'Chase overdue invoices', sub: `${data.overdue_invoices} past due date`, tag: money(data.outstanding_balance), to: '/invoices', tone: 'danger' },
   ].filter(Boolean);
 

@@ -386,6 +386,14 @@ def _dashboard_extras():
     )
 
 
+def _unpriced_stock_in():
+    """Invoice items that were bought in when sold and are still waiting for their buying price."""
+    rows = db_session.query(InvoiceItem.invoice_id).join(Invoice, InvoiceItem.invoice_id == Invoice.id) \
+        .filter(InvoiceItem.cost_pending.is_(True), Invoice.status != InvoiceStatus.CANCELLED) \
+        .order_by(Invoice.date_created.desc()).all()
+    return {'count': len(rows), 'invoices': len({r[0] for r in rows}), 'invoice_id': rows[0][0] if rows else None}
+
+
 @bp.get('/dashboard')
 def dashboard():
     outstanding = db_session.query(sa.func.sum(Invoice.balance_due)).filter(
@@ -406,6 +414,7 @@ def dashboard():
         outstanding_balance=outstanding,
         low_stock=[{'id': i.id, 'name': i.name, 'quantity': i.quantity,
                     'minimum_stock_level': i.minimum_stock_level} for i in low_stock],
+        unpriced_stock_in=_unpriced_stock_in(),
         recent_invoices=[_serialize_invoice(i) for i in recent_invoices],
         top_locations=_top_locations(10),
         **_dashboard_extras(),
@@ -843,7 +852,8 @@ def quotations_convert(pk):
               or 'INV-ITM', 'quantity': i.quantity, 'unit_price': i.unit_price,
               'cost_price': (i.inventory.cost_price if i.inventory else 0.0) or 0.0} for i in q.items]
     # Out-of-stock items are only bought in when the user agreed to it (the app asks first); the price is added later.
-    plan = plan_restock(lines, auto=bool(payload().get('allow_restock')))
+    data = payload()
+    plan = plan_restock(lines, data.get('restock'), auto=bool(data.get('allow_restock')))
 
     number = q.quotation_number
     with unscoped():

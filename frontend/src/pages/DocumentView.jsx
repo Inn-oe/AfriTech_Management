@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, pdfUrl } from '../api.js';
 import FormFields from '../components/FormFields.jsx';
 import Modal from '../components/Modal.jsx';
+import StockInModal from '../components/StockInModal.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { ErrorBox, IconButton, Loading, StatusBadge } from '../components/ui.jsx';
 import { date, humanize, money, number } from '../format.js';
@@ -22,6 +23,7 @@ export default function DocumentView({ kind }) {
   const { company } = useAuth();
   const [payment, setPayment] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [convertAsk, setConvertAsk] = useState(null); // pop-up before converting: { missing: [out-of-stock items] }
   const [costFor, setCostFor] = useState(null); // invoice line whose buying price is being added: { item, cost }
 
   if (loading && !doc) return <Loading />;
@@ -44,24 +46,24 @@ export default function DocumentView({ kind }) {
     }
   };
 
-  const convert = async () => {
-    // Items the shelf cannot cover are bought in on the new invoice, after asking.
+  // Clicking "Convert to invoice" opens a pop-up: a simple confirmation, or, when the shelf cannot cover some
+  // items, the stock-in form so they can be bought in on the spot.
+  const convert = () => {
     const wanted = {};
     doc.items.forEach((i) => {
-      if (i.inventory_id) wanted[i.inventory_id] = { name: i.description, need: (wanted[i.inventory_id]?.need || 0) + i.quantity, have: i.stock_available || 0 };
+      if (!i.inventory_id) return;
+      const w = wanted[i.inventory_id] || { inventory_id: i.inventory_id, name: i.description, need: 0, available: i.stock_available || 0 };
+      w.need += i.quantity;
+      wanted[i.inventory_id] = w;
     });
-    const missing = Object.values(wanted).filter((w) => w.need > w.have);
-    const message = missing.length
-      ? [
-        'Some items are out of stock:',
-        ...missing.map((w) => `- ${w.name}: ${w.have} on hand, ${w.need} needed`),
-        '',
-        'Convert anyway? The missing stock will be booked in on the invoice, and you can add the buying prices afterwards.',
-      ].join('\n')
-      : 'Convert this quotation to an invoice? Stock will be deducted.';
-    if (!window.confirm(message)) return;
-    const inv = await run(() => api.post(`/quotations/${id}/convert`, missing.length ? { allow_restock: true } : {}));
+    const missing = Object.values(wanted).filter((w) => w.need > w.available).map((w) => ({ ...w, short: w.need - w.available }));
+    setConvertAsk({ missing });
+  };
+
+  const doConvert = async (restock) => {
+    const inv = await run(() => api.post(`/quotations/${id}/convert`, restock ? { restock } : {}));
     if (inv) {
+      setConvertAsk(null);
       notify(`Invoice ${inv.invoice_number} created`);
       navigate(`/invoices/${inv.id}`);
     }
@@ -135,6 +137,16 @@ export default function DocumentView({ kind }) {
           <button type="button" className="btn btn-outline-danger" onClick={remove} disabled={busy} aria-label="Delete"><i className="fas fa-trash" /></button>
         </div>
       </div>
+
+      {isInvoice && doc.items.some((i) => i.cost_pending) && (
+        <div className="alert alert-warning d-flex flex-wrap align-items-center gap-2 no-print">
+          <i className="fas fa-triangle-exclamation" />
+          <div className="flex-grow-1">
+            <strong>Buying price missing.</strong> {doc.items.filter((i) => i.cost_pending).map((i) => i.description).join(', ')} {doc.items.filter((i) => i.cost_pending).length > 1 ? 'were' : 'was'} stocked
+            in without a price. Add it so your profit figures are right.
+          </div>
+        </div>
+      )}
 
       <div className="card document mb-4">
         <div className="card-body p-4 p-md-5">
@@ -244,6 +256,23 @@ export default function DocumentView({ kind }) {
             </table>
           </div>
         </div>
+      )}
+
+      {convertAsk && convertAsk.missing.length === 0 && (
+        <Modal title="Convert to invoice" onClose={() => setConvertAsk(null)}>
+          <p className="mb-1">Convert this quotation to an invoice?</p>
+          <p className="text-muted small mb-0">Stock will be deducted for the items on it.</p>
+          <div className="d-flex justify-content-end gap-2 mt-4">
+            <button type="button" className="btn btn-light" onClick={() => setConvertAsk(null)} disabled={busy}>Cancel</button>
+            <button type="button" className="btn btn-success" onClick={() => doConvert(null)} disabled={busy}>
+              {busy && <span className="spinner-border spinner-border-sm me-2" />}OK, convert
+            </button>
+          </div>
+        </Modal>
+      )}
+      {convertAsk && convertAsk.missing.length > 0 && (
+        <StockInModal items={convertAsk.missing} busy={busy} onCancel={() => setConvertAsk(null)} onConfirm={doConvert}
+          confirmLabel="Stock in and convert" />
       )}
 
       {costFor && (

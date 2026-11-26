@@ -104,3 +104,16 @@ def test_editing_an_invoice_can_also_buy_in(shop):
     r = c.put(f"/api/invoices/{inv['id']}", headers=H, json=body)
     assert r.status_code == 200, r.get_json()
     assert qty(c, inverter) == 0 and r.get_json()['items'][0]['cost_pending'] is False
+
+
+def test_convert_with_the_stock_in_entered_in_the_popup_and_a_dashboard_warning(shop):
+    c, cust, _, inverter = shop
+    q = post(c, '/api/quotations', {'customer_id': cust['id'], 'items': [
+        {'inventory_id': inverter['id'], 'quantity': 5, 'unit_price': 700}]})
+    inv = post(c, f"/api/quotations/{q['id']}/convert", {'restock': [{'inventory_id': inverter['id'], 'quantity': 4}]})
+    assert qty(c, inverter) == 1 and inv['items'][0]['cost_pending'] is True   # 2 + 4 bought in - 5 sold
+
+    warn = c.get('/api/dashboard').get_json()['unpriced_stock_in']
+    assert warn == {'count': 1, 'invoices': 1, 'invoice_id': inv['id']}
+    post(c, f"/api/invoices/{inv['id']}/items/{inv['items'][0]['id']}/cost", {'cost_price': 510})
+    assert c.get('/api/dashboard').get_json()['unpriced_stock_in']['count'] == 0
