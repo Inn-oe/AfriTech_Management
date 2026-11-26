@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth.jsx';
 import { initials, sectionOf, SECTIONS } from '../nav.js';
 import { Brand } from './Brand.jsx';
+import ErrorBoundary from './ErrorBoundary.jsx';
 import SearchPalette from './SearchPalette.jsx';
 
 export default function Layout() {
@@ -98,7 +99,7 @@ export default function Layout() {
               ))}
             </nav>
           )}
-          <Outlet />
+          <ErrorBoundary key={pathname}><Outlet /></ErrorBoundary>
         </main>
       </div>
       {search && <SearchPalette onClose={() => setSearch(false)} />}

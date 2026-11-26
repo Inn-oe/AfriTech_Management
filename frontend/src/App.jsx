@@ -69,14 +69,14 @@ export default function App() {
           <Route path="inventory" element={<Inventory />} />
 
           <Route path="quotations" element={<Quotations />} />
-          <Route path="quotations/new" element={<DocumentForm kind="quotation" />} />
-          <Route path="quotations/:id" element={<DocumentView kind="quotation" />} />
-          <Route path="quotations/:id/edit" element={<DocumentForm kind="quotation" />} />
+          <Route path="quotations/new" element={<DocumentForm key="q-new" kind="quotation" />} />
+          <Route path="quotations/:id" element={<DocumentView key="q-view" kind="quotation" />} />
+          <Route path="quotations/:id/edit" element={<DocumentForm key="q-edit" kind="quotation" />} />
 
           <Route path="invoices" element={<Invoices />} />
-          <Route path="invoices/new" element={<DocumentForm kind="invoice" />} />
-          <Route path="invoices/:id" element={<DocumentView kind="invoice" />} />
-          <Route path="invoices/:id/edit" element={<DocumentForm kind="invoice" />} />
+          <Route path="invoices/new" element={<DocumentForm key="i-new" kind="invoice" />} />
+          <Route path="invoices/:id" element={<DocumentView key="i-view" kind="invoice" />} />
+          <Route path="invoices/:id/edit" element={<DocumentForm key="i-edit" kind="invoice" />} />
 
           <Route path="payments" element={<Payments />} />
           <Route path="projects" element={<Projects />} />
