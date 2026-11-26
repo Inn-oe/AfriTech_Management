@@ -114,7 +114,7 @@ def _banking(company):
 def _items_table(rows):
     data = [['Sr', 'Item Code', 'Description', 'Quantity', 'Price', 'Total Amount']]
     for i, (code, desc, qty, price) in enumerate(rows, start=1):
-        data.append([str(i), Paragraph(esc(code or 'N/A'), STYLES['Normal']),
+        data.append([str(i), Paragraph(esc(code or ''), STYLES['Normal']),
                      Paragraph(esc(desc or 'N/A'), STYLES['Normal']), str(qty),
                      money(price), money(qty * price)])
     table = Table(data, colWidths=ITEM_COLS, repeatRows=1)
@@ -142,13 +142,26 @@ def _totals_table(rows):
     return table
 
 
+def real_code(code):
+    """A product code worth printing; the placeholders the system used to make up (CUST-..., INV-ITM) are dropped."""
+    code = (code or '').strip()
+    if not code or code.upper().startswith('CUST-') or code.upper() == 'INV-ITM':
+        return None
+    return code
+
+
+def item_code(item):
+    """The code shown for a quotation or invoice line: its own, else the product's code from stock."""
+    return real_code(item.item_code) or (real_code(item.inventory.specifications) if item.inventory else None)
+
+
 def _item_rows(items):
     rows = []
     for item in items:
         desc = item.description
         if (not desc or desc == item.item_code) and item.inventory:
             desc = item.inventory.name
-        code = item.item_code or (item.inventory.specifications if item.inventory else None)
+        code = item_code(item)
         rows.append((code, desc, item.quantity, item.unit_price))
     return rows
 

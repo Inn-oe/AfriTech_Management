@@ -688,14 +688,14 @@ def parse_lines(items):
         if inv_id:
             inv = get_or_404(Inventory, int(inv_id), 'Inventory item')
             lines.append({'inventory': inv, 'description': it.get('description') or inv.name,
-                          'item_code': inv.specifications or 'INV-ITM', 'quantity': qty,
+                          'item_code': pdfs.real_code(inv.specifications), 'quantity': qty,
                           'unit_price': price, 'cost_price': inv.cost_price or 0.0})
         else:
             desc = (it.get('description') or '').strip()
             if not desc:
                 raise ApiError(f'Line {i}: custom item name is required')
             lines.append({'inventory': None, 'description': desc,
-                          'item_code': it.get('item_code') or f'CUST-{stamp}-{i}', 'quantity': qty,
+                          'item_code': pdfs.real_code(it.get('item_code')), 'quantity': qty,
                           'unit_price': price, 'cost_price': 0.0})
     if not lines:
         raise ApiError('Add at least one item')
@@ -780,7 +780,7 @@ def require_customer(customer_id):
 def _serialize_line(item):
     return {'id': item.id, 'inventory_id': item.inventory_id,
             'description': item.description or (item.inventory.name if item.inventory else 'Item'),
-            'item_code': item.item_code, 'quantity': item.quantity, 'unit_price': item.unit_price,
+            'item_code': pdfs.item_code(item), 'quantity': item.quantity, 'unit_price': item.unit_price,
             'amount': round(item.quantity * item.unit_price, 2), 'cost_pending': bool(getattr(item, 'cost_pending', False)),
             'stock_available': item.inventory.quantity if item.inventory else None}
 
@@ -881,8 +881,7 @@ def quotations_convert(pk):
     if not q.customer:
         raise ApiError('Quotation has no customer; assign one before converting')
     lines = [{'inventory': i.inventory, 'description': i.description or (i.inventory.name if i.inventory else 'Item'),
-              'item_code': i.item_code or (i.inventory.specifications if i.inventory else f'CUST-LEGACY-{i.id}')
-              or 'INV-ITM', 'quantity': i.quantity, 'unit_price': i.unit_price,
+              'item_code': pdfs.item_code(i), 'quantity': i.quantity, 'unit_price': i.unit_price,
               'cost_price': (i.inventory.cost_price if i.inventory else 0.0) or 0.0} for i in q.items]
     # Out-of-stock items are only bought in when the user agreed to it (the app asks first); the price is added later.
     data = payload()
