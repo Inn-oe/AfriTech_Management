@@ -1,21 +1,17 @@
+export const PRODUCT_NAME = 'SolarPilot';
+
+/** The SolarPilot panel-and-sun mark on its own. */
 export function SunMark({ size = 38 }) {
-  return (
-    <svg className="brand-mark" width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
-      <g stroke="#f4b942" strokeWidth="4" strokeLinecap="round">
-        <path d="M32 6v8M32 50v8M6 32h8M50 32h8M13.6 13.6l5.7 5.7M44.7 44.7l5.7 5.7M50.4 13.6l-5.7 5.7M19.3 44.7l-5.7 5.7" />
-      </g>
-      <circle cx="32" cy="32" r="11" fill="#f4b942" />
-    </svg>
-  );
+  return <img className="brand-mark" src="/solarpilot-mark.png" width={size} height={Math.round(size * 0.82)} alt="" aria-hidden="true" />;
 }
 
 /** The product name on the sign-in page; inside the app it shows the signed-in company's own logo and name. */
 export function Brand({ to = '/', company = null }) {
   if (!company) {
+    // The full SolarPilot logo is dark on transparent, so it sits on a white card over the dark panel.
     return (
-      <a className="brand" href={to}>
-        <SunMark />
-        <span className="brand-name">Solar Business<br />Manager</span>
+      <a className="brand brand-product" href={to} title={PRODUCT_NAME}>
+        <img src="/solarpilot-logo.png" alt="SolarPilot - Solar Business Management" />
       </a>
     );
   }
@@ -23,7 +19,7 @@ export function Brand({ to = '/', company = null }) {
     <a className="brand" href={to} title={company.name}>
       {company.has_logo
         ? <span className="brand-logo"><img src={`/api/company/logo?v=${company.logo_v}`} alt="" /></span>
-        : <SunMark />}
+        : <span className="brand-logo"><img src="/solarpilot-mark.png" alt="" /></span>}
       <span className="brand-name brand-company">{company.name}</span>
     </a>
   );

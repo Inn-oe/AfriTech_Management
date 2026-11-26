@@ -65,7 +65,8 @@ h1, h2, h3, h4, h5, h6 { letter-spacing: -0.02em; }
   transition: transform 0.25s ease;
 }
 .brand { display: flex; align-items: center; gap: 0.7rem; padding: 1.4rem 1.25rem 1rem; color: #fff; text-decoration: none; }
-.brand-mark { width: 38px; height: 38px; flex-shrink: 0; }
+.brand-mark { flex-shrink: 0; object-fit: contain; }
+.brand-product img { display: block; height: 72px; width: auto; max-width: 100%; background: #fff; border-radius: 14px; padding: 10px 16px; }
 .brand-name { font-weight: 700; font-size: 1.05rem; line-height: 1.15; }
 .brand-logo { width: 56px; height: 56px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: #fff; border-radius: 12px; padding: 4px; }
 .brand-logo img { max-width: 100%; max-height: 100%; object-fit: contain; }
@@ -257,7 +258,7 @@ h1, h2, h3, h4, h5, h6 { letter-spacing: -0.02em; }
   background: linear-gradient(165deg, #0c2a3a 0%, #0e4a52 60%, #0f5c57 100%);
   padding: 2.5rem 4.5rem; display: flex; flex-direction: column;
 }
-.auth-hero .brand { padding: 0; margin-bottom: 4rem; }
+.auth-hero .brand { padding: 0; margin-bottom: 4rem; align-self: flex-start; }
 .auth-hero h1 { font-size: clamp(2.2rem, 4.2vw, 3.4rem); font-weight: 800; line-height: 1.05; letter-spacing: -0.035em; margin: 1rem 0 1.2rem; }
 .auth-hero h1 span { color: var(--amber); display: block; }
 .auth-hero p.lead { color: rgba(255, 255, 255, 0.78); max-width: 34rem; font-size: 1.05rem; line-height: 1.6; }
@@ -272,6 +273,7 @@ h1, h2, h3, h4, h5, h6 { letter-spacing: -0.02em; }
 .auth-card .eyebrow { color: var(--brand); }
 .auth-card h2 { font-weight: 800; letter-spacing: -0.03em; }
 .auth-mark { width: 56px; height: 56px; border-radius: 14px; background: var(--brand-soft); display: flex; align-items: center; justify-content: center; margin-bottom: 1.2rem; }
+.auth-mark img { width: 36px; height: auto; }
 @media (max-width: 991.98px) {
   .auth-split { grid-template-columns: 1fr; }
   .auth-hero { padding: 1.5rem; }
