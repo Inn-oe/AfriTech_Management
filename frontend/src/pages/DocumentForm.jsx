@@ -101,6 +101,7 @@ export default function DocumentForm({ kind }) {
       };
       const saved = id ? await api.put(`${base}/${id}`, body) : await api.post(base, body);
       notify(`${label} ${saved.invoice_number || saved.quotation_number || ''} ${id ? 'updated' : 'created'}`);
+      if (saved.plan_cleared) notify('The invoice total changed, so its payment plan was cleared. Set a new plan on the invoice.', 'error');
       navigate(`${base}/${saved.id}`);
     } catch (err) {
       notify(err.message, 'error');

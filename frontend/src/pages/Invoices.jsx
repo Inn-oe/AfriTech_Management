@@ -19,7 +19,7 @@ export default function Invoices() {
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return (data || []).filter((r) => (!status || r.status === status)
+    return (data || []).filter((r) => (!status || (r.display_status || r.status) === status)
       && (!q || [r.invoice_number, r.customer?.name, r.customer?.id].some((v) => String(v ?? '').toLowerCase().includes(q))));
   }, [data, search, status]);
 
@@ -82,7 +82,7 @@ export default function Invoices() {
                       <td>{inv.activity_type_name || <span className="text-muted">General</span>}</td>
                       <td className="text-end">{money(inv.total_amount)}</td>
                       <td className={`text-end fw-semibold ${inv.balance_due > 0 ? 'text-danger' : 'text-success'}`}>{money(inv.balance_due)}</td>
-                      <td><StatusBadge value={inv.status} /></td>
+                      <td><StatusBadge value={inv.display_status || inv.status} />{inv.has_plan && <i className="fas fa-calendar-check text-muted ms-2" title="Has a payment plan" />}</td>
                       <td className="text-end text-nowrap">
                         <div className="btn-group">
                           <IconButton icon="fa-eye" title="View" onClick={() => navigate(`/invoices/${inv.id}`)} />

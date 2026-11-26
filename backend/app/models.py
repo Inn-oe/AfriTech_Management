@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Date, Integer, String, Float, DateTime, ForeignKey, Boolean, Enum, LargeBinary
-from sqlalchemy.orm import declared_attr, deferred, relationship
+from sqlalchemy.orm import backref, declared_attr, deferred, relationship
 from .database import Base
 import enum
 from datetime import datetime
@@ -376,7 +376,18 @@ class Invoice(TenantMixin, Base):
     due_date = Column(DateTime)
     notes = Column(String(500))
     invoice_number = Column(String(20), unique=True, nullable=True)
+    plan_base_paid = Column(Float)   # amount already paid when the payment plan was made (instalments cover the rest)
     date_created = Column(DateTime, default=datetime.utcnow)
+
+class InvoiceInstallment(TenantMixin, Base):
+    """One monthly instalment of an invoice's payment plan."""
+    __tablename__ = 'invoice_installments'
+    id = Column(Integer, primary_key=True)
+    invoice_id = Column(Integer, ForeignKey('invoices.id'), nullable=False, index=True)
+    invoice = relationship('Invoice', backref=backref('installments', cascade='all, delete-orphan'))
+    number = Column(Integer, nullable=False)
+    due_date = Column(DateTime, nullable=False)
+    amount = Column(Float, nullable=False)
 
 class InvoiceItem(TenantMixin, Base):
     __tablename__ = 'invoice_items'

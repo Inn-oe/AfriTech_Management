@@ -1,5 +1,6 @@
 """PDF documents (quotations, invoices, receipts, financial statements)."""
 import io
+from datetime import datetime
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
@@ -152,6 +153,30 @@ def _item_rows(items):
     return rows
 
 
+def _plan_table(inv):
+    """The payment plan (monthly instalments) agreed for an invoice, or nothing when it has none."""
+    from .payment_plans import plan_view
+    plan = plan_view(inv)
+    if not plan:
+        return []
+    shown = {'PAID': 'Paid', 'PARTIAL': 'Part paid', 'UNPAID': 'Due'}
+    data = [['Instalment', 'Due date', 'Amount', 'Status']]
+    for row in plan['installments']:
+        status = 'OVERDUE' if row['overdue'] else shown[row['status']]
+        data.append([str(row['number']), datetime.fromisoformat(row['due_date']).strftime('%d-%m-%Y'),
+                     money(row['amount']), status])
+    table = Table(data, colWidths=[1.1 * inch, 1.4 * inch, 1.4 * inch, 1.4 * inch], hAlign='LEFT')
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+    ]))
+    heading = ParagraphStyle('plan_heading', parent=STYLES['Normal'], fontSize=10, spaceAfter=4)
+    return [Paragraph('<b>Payment plan</b>', heading), table]
+
+
 def quotation_pdf(company, q):
     story = _letterhead(company, 'Quotation', q.quotation_number or f'QTN-{q.id:05d}')
     story += [_detail('Customer', customer_name(q.customer)),
@@ -175,7 +200,9 @@ def invoice_pdf(company, inv):
               Spacer(1, 0.2 * inch),
               _totals_table([('Total:', inv.total_amount), ('Paid:', inv.paid_amount),
                              ('Balance:', inv.balance_due)]),
-              Spacer(1, 0.4 * inch)]
+              Spacer(1, 0.3 * inch)]
+    story += _plan_table(inv)
+    story += [Spacer(1, 0.2 * inch)]
     story += _banking(company)
     name = safe_filename(customer_name(inv.customer))
     return _build(story), f'Invoice_{inv.invoice_number or inv.id}_{name}.pdf'

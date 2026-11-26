@@ -9,9 +9,10 @@ from flask import Blueprint, g, jsonify, request, send_file
 from sqlalchemy.orm import selectinload
 
 from . import pdfs, statements
+from .payment_plans import MAX_MONTHS, add_months, build_schedule, overdue_info, plan_view
 from .auth import ApiError, find, protect, unscoped
 from .database import db_session, engine
-from .models import (Activity, ActivityStatusEnum, ActivityType, Currency, Customer, FinancialCategory,
+from .models import (InvoiceInstallment, Activity, ActivityStatusEnum, ActivityType, Currency, Customer, FinancialCategory,
                     FinancialRecord, FinancialType, FuelRecord, FuelType, Inventory, Invoice, InvoiceItem,
                     InvoiceStatus, JourneyRecord, Location, LocationCategory, MileageRecord, Payment,
                     PaymentType, Pricing, StockChangeReason, StockTransaction, Supplier, TransactionType,
@@ -365,9 +366,11 @@ def _dashboard_extras():
     week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     recent_jobs = db_session.query(Activity).order_by(Activity.date.desc(), Activity.id.desc()).limit(6).all()
-    overdue = db_session.query(Invoice).filter(
-        Invoice.status.notin_([InvoiceStatus.CANCELLED, InvoiceStatus.PAID]),
-        Invoice.balance_due > 0, Invoice.due_date < day_start).count()
+    open_invoices = db_session.query(Invoice).options(selectinload(Invoice.installments)).filter(
+        Invoice.status.notin_([InvoiceStatus.CANCELLED, InvoiceStatus.PAID]), Invoice.balance_due > 0).all()
+    late = [info for info in (overdue_info(i, now) for i in open_invoices) if info[0]]
+    overdue = len(late)
+    overdue_amount = round(sum(info[1] for info in late), 2)
     prev_y, prev_m = (now.year, now.month - 1) if now.month > 1 else (now.year - 1, 12)
     return dict(
         monthly=monthly,
@@ -382,7 +385,7 @@ def _dashboard_extras():
               'today': db_session.query(Activity).filter(
                   Activity.date >= day_start, Activity.date < day_start + timedelta(days=1)).count(),
               'recent': [_serialize_activity(a) for a in recent_jobs]},
-        overdue_invoices=overdue,
+        overdue_invoices=overdue, overdue_amount=overdue_amount,
     )
 
 
@@ -900,10 +903,14 @@ def _serialize_invoice(inv, detail=False):
     data = row(inv, customer=customer_brief(inv.customer),
                activity_type_name=inv.activity_type.name if inv.activity_type else None,
                quotation_number=inv.quotation.quotation_number if inv.quotation else None)
+    late, late_amount, late_since = overdue_info(inv)
+    data.update(overdue=late, overdue_amount=late_amount, overdue_since=late_since, has_plan=bool(inv.installments),
+                display_status='OVERDUE' if late else to_json(inv.status))
     if detail:
         data['items'] = [_serialize_line(i) for i in inv.items]
         data['payments'] = [_serialize_payment(p) for p in
                             sorted(inv.payments, key=lambda p: p.payment_date or datetime.min)]
+        data['plan'] = plan_view(inv)
     return data
 
 
@@ -943,7 +950,8 @@ def _write_invoice_items(inv, lines, ref_type, note):
 @bp.get('/invoices')
 def invoices_list():
     q = db_session.query(Invoice).options(selectinload(Invoice.customer), selectinload(Invoice.activity_type),
-                                          selectinload(Invoice.quotation)).order_by(Invoice.date_created.desc())
+                                          selectinload(Invoice.quotation), selectinload(Invoice.installments)) \
+        .order_by(Invoice.date_created.desc())
     if request.args.get('customer_id'):
         q = q.filter(Invoice.customer_id == request.args['customer_id'])
     return jsonify([_serialize_invoice(i) for i in q.all()])
@@ -992,13 +1000,19 @@ def invoices_update(pk):
         invoice.due_date = parse_date(data['due_date'])
     if data.get('status'):
         invoice.status = parse_enum(InvoiceStatus, data['status'], 'status')
+    old_total = invoice.total_amount
     _write_invoice_items(invoice, lines, 'INVOICE_EDIT_DEDUCT', 'Updated')
+    plan_cleared = bool(invoice.installments) and abs((invoice.total_amount or 0) - (old_total or 0)) > 0.004
+    if plan_cleared:
+        for old in list(invoice.installments):
+            db_session.delete(old)
+        invoice.plan_base_paid = None
     if invoice.paid_amount > invoice.total_amount:
         raise ApiError(f'New total {invoice.total_amount:,.2f} is less than the amount already paid '
                        f'({invoice.paid_amount:,.2f}). Remove payments first.')
     db_session.commit()
     db_session.refresh(invoice)
-    return jsonify(_serialize_invoice(invoice, detail=True))
+    return jsonify(_serialize_invoice(invoice, detail=True) | {'plan_cleared': plan_cleared})
 
 
 @bp.post('/invoices/<int:pk>/status')
@@ -1049,6 +1063,46 @@ def invoice_item_cost(pk, item_id):
                 t.unit_price = cost
                 t.total_value = t.quantity * cost
     db_session.commit()
+    return jsonify(_serialize_invoice(invoice, detail=True))
+
+
+@bp.post('/invoices/<int:pk>/plan')
+def invoice_plan_set(pk):
+    """Agree a payment plan: the balance still owed is paid in equal monthly instalments over `months` months."""
+    invoice = get_or_404(Invoice, pk, 'Invoice')
+    data = payload()
+    months = parse_number(data.get('months'), int, 'number of months')
+    if not months or not 1 <= months <= MAX_MONTHS:
+        raise ApiError(f'Choose between 1 and {MAX_MONTHS} months.')
+    if invoice.status == InvoiceStatus.CANCELLED:
+        raise ApiError('A cancelled invoice cannot have a payment plan.')
+    balance = round(invoice.balance_due or 0, 2)
+    if balance <= 0.004:
+        raise ApiError('This invoice is already paid in full.')
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    first_due = parse_date(data.get('start_date')) or add_months(today, 1)
+    first_due = first_due.replace(hour=0, minute=0, second=0, microsecond=0)
+    schedule = build_schedule(balance, months, first_due)
+    for old in list(invoice.installments):
+        db_session.delete(old)
+    db_session.flush()
+    for number, (due, amount) in enumerate(schedule, start=1):
+        db_session.add(InvoiceInstallment(invoice_id=invoice.id, number=number, due_date=due, amount=amount))
+    invoice.plan_base_paid = round(invoice.paid_amount or 0, 2)
+    invoice.due_date = schedule[-1][0]          # the invoice is due in full when the last instalment is
+    db_session.commit()
+    db_session.refresh(invoice)
+    return jsonify(_serialize_invoice(invoice, detail=True))
+
+
+@bp.delete('/invoices/<int:pk>/plan')
+def invoice_plan_remove(pk):
+    invoice = get_or_404(Invoice, pk, 'Invoice')
+    for old in list(invoice.installments):
+        db_session.delete(old)
+    invoice.plan_base_paid = None
+    db_session.commit()
+    db_session.refresh(invoice)
     return jsonify(_serialize_invoice(invoice, detail=True))
 
 

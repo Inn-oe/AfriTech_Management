@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, pdfUrl } from '../api.js';
 import FormFields from '../components/FormFields.jsx';
 import Modal from '../components/Modal.jsx';
+import PaymentPlanModal from '../components/PaymentPlanModal.jsx';
 import StockInModal from '../components/StockInModal.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { ErrorBox, IconButton, Loading, StatusBadge } from '../components/ui.jsx';
@@ -24,6 +25,7 @@ export default function DocumentView({ kind }) {
   const [payment, setPayment] = useState(null);
   const [busy, setBusy] = useState(false);
   const [convertAsk, setConvertAsk] = useState(null); // pop-up before converting: { missing: [out-of-stock items] }
+  const [planAsk, setPlanAsk] = useState(null); // payment-plan pop-up: { balance, hasPlan }
   const [costFor, setCostFor] = useState(null); // invoice line whose buying price is being added: { item, cost }
 
   if (loading && !doc) return <Loading />;
@@ -93,8 +95,23 @@ export default function DocumentView({ kind }) {
     const ok = await run(() => api.post(`/invoices/${id}/payments`, payment), 'Payment recorded');
     if (ok) {
       setPayment(null);
+      const fresh = await api.get(`/invoices/${id}`).catch(() => null);
+      reload();
+      // A part payment: ask how long the customer will take to pay the rest, in monthly instalments.
+      if (fresh && fresh.balance_due > 0.004 && !fresh.has_plan && fresh.status !== 'CANCELLED') setPlanAsk({ balance: fresh.balance_due, hasPlan: false });
+    }
+  };
+
+  const savePlan = async (body) => {
+    if (await run(() => api.post(`/invoices/${id}/plan`, body), 'Payment plan saved')) {
+      setPlanAsk(null);
       reload();
     }
+  };
+
+  const removePlan = async () => {
+    if (!window.confirm('Remove this payment plan? The invoice goes back to a single due date.')) return;
+    if (await run(() => api.del(`/invoices/${id}/plan`), 'Payment plan removed')) reload();
   };
 
   const deletePayment = async (p) => {
@@ -138,6 +155,15 @@ export default function DocumentView({ kind }) {
         </div>
       </div>
 
+      {isInvoice && doc.overdue && (
+        <div className="alert alert-danger d-flex flex-wrap align-items-center gap-2 no-print">
+          <i className="fas fa-clock" />
+          <div className="flex-grow-1">
+            <strong>Overdue.</strong> {money(doc.overdue_amount)} {doc.has_plan ? 'of instalments has' : 'has'} been due since {date(doc.overdue_since)} and is still unpaid.
+          </div>
+        </div>
+      )}
+
       {isInvoice && doc.items.some((i) => i.cost_pending) && (
         <div className="alert alert-warning d-flex flex-wrap align-items-center gap-2 no-print">
           <i className="fas fa-triangle-exclamation" />
@@ -170,7 +196,7 @@ export default function DocumentView({ kind }) {
               {doc.customer?.phone && <div className="small text-muted">{doc.customer.phone}</div>}
               <div><strong>Date:</strong> {date(doc.date_created)}</div>
               {doc.due_date && <div><strong>{isInvoice ? 'Due' : 'Valid until'}:</strong> {date(doc.due_date)}</div>}
-              <div className="mt-1"><StatusBadge value={doc.status} /></div>
+              <div className="mt-1"><StatusBadge value={isInvoice ? doc.display_status : doc.status} /></div>
             </div>
           </div>
 
@@ -228,6 +254,44 @@ export default function DocumentView({ kind }) {
         </div>
       </div>
 
+      {isInvoice && doc.status !== 'CANCELLED' && (doc.plan || doc.balance_due > 0) && (
+        <div className="card mb-4">
+          <div className="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+            Payment plan
+            <span className="no-print d-flex gap-2">
+              {doc.balance_due > 0 && (
+                <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => setPlanAsk({ balance: doc.balance_due, hasPlan: !!doc.plan })}>
+                  <i className="fas fa-calendar-plus me-1" />{doc.plan ? 'Change plan' : 'Set payment plan'}
+                </button>
+              )}
+              {doc.plan && <button type="button" className="btn btn-sm btn-outline-danger" onClick={removePlan} disabled={busy}>Remove plan</button>}
+            </span>
+          </div>
+          {doc.plan ? (
+            <div className="table-responsive">
+              <table className="table align-middle mb-0">
+                <thead><tr><th>Instalment</th><th>Due date</th><th className="text-end">Amount</th><th className="text-end">Paid</th><th>Status</th></tr></thead>
+                <tbody>
+                  {doc.plan.installments.map((r) => (
+                    <tr key={r.id} className={r.overdue ? 'table-danger' : ''}>
+                      <td>{r.number} of {doc.plan.count}</td>
+                      <td>{date(r.due_date)}</td>
+                      <td className="text-end">{money(r.amount)}</td>
+                      <td className="text-end">{money(r.paid)}</td>
+                      <td><StatusBadge value={r.overdue ? 'OVERDUE' : r.status} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="card-body text-muted small">
+              No payment plan yet. If the customer will pay the {money(doc.balance_due)} balance in monthly instalments, set one up and the invoice is marked overdue when an instalment is missed.
+            </div>
+          )}
+        </div>
+      )}
+
       {isInvoice && (
         <div className="card no-print">
           <div className="card-header">Payments</div>
@@ -256,6 +320,10 @@ export default function DocumentView({ kind }) {
             </table>
           </div>
         </div>
+      )}
+
+      {planAsk && (
+        <PaymentPlanModal balance={planAsk.balance} hasPlan={planAsk.hasPlan} busy={busy} onSave={savePlan} onCancel={() => setPlanAsk(null)} />
       )}
 
       {convertAsk && convertAsk.missing.length === 0 && (

@@ -93,8 +93,8 @@ def ensure_schema():
                      if 'company_id' in t.c and t.name not in ('users', 'audit_logs')]
     additions = {
         'payments': [('payer_name', 'VARCHAR(100)')],
-        'invoices': [('quotation_id', 'INTEGER REFERENCES quotations(id)')],
         'invoice_items': [('cost_pending', 'BOOLEAN DEFAULT FALSE')],
+        'invoices': [('quotation_id', 'INTEGER REFERENCES quotations(id)'), ('plan_base_paid', 'FLOAT')],
         'companies': [('logo', str(LargeBinary().compile(dialect=engine.dialect))),
                       ('finance_defaults_added', 'BOOLEAN DEFAULT FALSE')],
     }
