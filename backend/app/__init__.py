@@ -17,6 +17,7 @@ from whitenoise import WhiteNoise
 
 from .database import Base, db_session, engine, init_db
 from . import giebee_import
+from .default_categories import add_default_categories, add_defaults_to_existing_companies
 from .platform_usage import platform_bp
 from .auth import auth_bp
 from .api import bp as api_bp
@@ -93,7 +94,8 @@ def ensure_schema():
     additions = {
         'payments': [('payer_name', 'VARCHAR(100)')],
         'invoices': [('quotation_id', 'INTEGER REFERENCES quotations(id)')],
-        'companies': [('logo', str(LargeBinary().compile(dialect=engine.dialect)))],
+        'companies': [('logo', str(LargeBinary().compile(dialect=engine.dialect))),
+                      ('finance_defaults_added', 'BOOLEAN DEFAULT FALSE')],
     }
     for t in tenant_tables:
         additions.setdefault(t, []).append(('company_id', 'INTEGER REFERENCES companies(id)'))
@@ -111,6 +113,17 @@ def ensure_schema():
             "UPDATE quotations SET status = UPPER(status) "
             "WHERE status IS NOT NULL AND status <> UPPER(status)"))
         _adopt_legacy_rows(conn, tenant_tables)
+    # Companies that existed before the standard expense categories were added get them once.
+    try:
+        added = add_defaults_to_existing_companies(db_session)
+        db_session.commit()
+        if added:
+            log.info('Added the standard financial categories to %d existing companies', added)
+    except Exception:
+        db_session.rollback()
+        log.exception('Could not add the standard financial categories')
+    finally:
+        db_session.remove()
 
 
 def create_app():

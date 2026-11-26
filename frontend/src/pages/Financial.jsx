@@ -160,7 +160,7 @@ export default function Financial() {
               { name: 'type', label: 'Type', type: 'select', options: types, required: true },
               { name: 'date', label: 'Date', type: 'date', required: true },
               categoryOptions.length
-                ? { name: 'category', label: 'Category', type: 'select', options: categoryOptions, required: true }
+                ? { name: 'category', label: 'Category', type: 'select', options: categoryOptions, required: true, help: 'Not listed? Add it under Settings → Financial Categories.' }
                 : { name: 'category', label: 'Category', required: true, help: 'Tip: define reusable categories under Settings → Financial Categories' },
               { name: 'amount', label: 'Amount', type: 'number', min: 0, step: 0.01, required: true },
               { name: 'description', label: 'Description', col: 12, required: true },

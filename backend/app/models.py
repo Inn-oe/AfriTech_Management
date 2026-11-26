@@ -107,6 +107,7 @@ class Company(Base):
     logo = deferred(Column(LargeBinary))   # PNG or JPEG bytes, printed on quotations, invoices and receipts
     currency = Column(String(10), default='USD')
     is_active = Column(Boolean, default=True, nullable=False)
+    finance_defaults_added = Column(Boolean, default=False)   # the standard expense categories were copied in
     date_created = Column(DateTime, default=datetime.utcnow)
 
 

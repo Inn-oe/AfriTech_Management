@@ -211,24 +211,3 @@ def receipt_pdf(company, payment):
     story += [amount, Spacer(1, 0.4 * inch), Paragraph('Thank you for your business!', STYLES['Normal'])]
     name = safe_filename(customer_name(customer))
     return _build(story), f'Payment_{payment.id}_{name}.pdf'
-
-
-def statement_pdf(company, title, rows):
-    """Simple two-column financial statement (income statement / balance sheet)."""
-    title_style = ParagraphStyle('stmt_title', parent=STYLES['Heading1'], fontSize=16,
-                                 spaceAfter=18, alignment=1)
-    data = [[label, money(value) if value is not None else ''] for label, value in rows]
-    table = Table(data, colWidths=[260, 140])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-    ]))
-    name_style = ParagraphStyle('stmt_company', parent=STYLES['Heading2'], alignment=1)
-    return _build([Paragraph(esc(company.name), name_style), Paragraph(esc(title), title_style),
-                   Spacer(1, 12), table])

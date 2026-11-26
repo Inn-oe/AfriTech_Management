@@ -16,7 +16,14 @@ function Empty() {
 }
 
 const compact = (v) => (Math.abs(v) >= 1000 ? `$${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : `$${v}`);
-const moneyTooltip = { callbacks: { label: (ctx) => ` ${ctx.dataset.label ? `${ctx.dataset.label}: ` : ''}${money(ctx.parsed.y ?? ctx.parsed)}` } };
+// The value sits on y for upright bars and lines, on x for horizontal bars (where y is just the bar's position).
+const valueOf = (ctx) => (ctx.chart.options.indexAxis === 'y' ? ctx.parsed.x : (ctx.parsed.y ?? ctx.parsed));
+const moneyTooltip = { callbacks: { label: (ctx) => ` ${ctx.dataset.label ? `${ctx.dataset.label}: ` : ''}${money(valueOf(ctx))}` } };
+// Long item names are shortened on the axis (the full name is still shown when hovering).
+const shortLabel = (max) => function tick(value) {
+  const text = String(this.getLabelForValue(value));
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+};
 
 /** Doughnut with the total in the middle and a percentage legend beside it. */
 export function DonutWithLegend({ items, centerLabel, isMoney = true }) {
@@ -76,7 +83,9 @@ export function BarChart({ items, label, color = PALETTE[0], horizontal = false 
           indexAxis: horizontal ? 'y' : 'x',
           maintainAspectRatio: false,
           plugins: { legend: { display: false }, tooltip: moneyTooltip },
-          scales: { x: { grid: { display: horizontal } }, y: { grid: { display: !horizontal }, beginAtZero: true } },
+          scales: horizontal
+            ? { x: { grid: { display: true }, beginAtZero: true, ticks: { callback: compact } }, y: { grid: { display: false }, ticks: { callback: shortLabel(24) } } }
+            : { x: { grid: { display: false } }, y: { grid: { display: true }, beginAtZero: true } },
         }}
       />
     </div>

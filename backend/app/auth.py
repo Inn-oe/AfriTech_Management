@@ -20,6 +20,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from .database import db_session
 from . import usage
+from .default_categories import add_default_categories
 from .models import AuditLog, Company, StockTransaction, TenantMixin, User
 
 log = logging.getLogger('erp')
@@ -340,6 +341,8 @@ def signup():
     company = Company(name=company_name, phone=_text(data, 'phone', 100) or None, email=email)
     db_session.add(company)
     db_session.flush()
+    add_default_categories(db_session, company.id)
+    company.finance_defaults_added = True
     user = User(company_id=company.id, name=name, email=email, role='owner',
                 password_hash=generate_password_hash(password))
     db_session.add(user)

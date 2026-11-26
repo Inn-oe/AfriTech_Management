@@ -8,7 +8,7 @@ import sqlalchemy as sa
 from flask import Blueprint, g, jsonify, request, send_file
 from sqlalchemy.orm import selectinload
 
-from . import pdfs
+from . import pdfs, statements
 from .auth import ApiError, find, protect, unscoped
 from .database import db_session, engine
 from .models import (Activity, ActivityStatusEnum, ActivityType, Currency, Customer, FinancialCategory,
@@ -1143,21 +1143,33 @@ def financial_summary():
     )
 
 
+def _statement_figures(start, end):
+    """Everything the income statement shows for one period (accrual basis)."""
+    def by_category(kind, *extra):
+        rows = db_session.query(FinancialRecord.category, sa.func.sum(FinancialRecord.amount))             .filter(*_records(kind, start, end), *extra).group_by(FinancialRecord.category).all()
+        return [(c or 'Uncategorised', v) for c, v in rows if v]
+
+    def item_total(*extra):
+        return db_session.query(sa.func.sum(InvoiceItem.amount)).join(Invoice)             .filter(*_invoiced(start, end), *extra).scalar() or 0
+
+    return dict(
+        revenue=_sum(Invoice.total_amount, *_invoiced(start, end)),
+        stock=item_total(InvoiceItem.inventory_id.isnot(None)),
+        service=item_total(InvoiceItem.inventory_id.is_(None)),
+        cogs=db_session.query(sa.func.sum(InvoiceItem.cost_price * InvoiceItem.quantity)).join(Invoice)
+        .filter(*_invoiced(start, end)).scalar() or 0,
+        other=by_category(FinancialType.INCOME, FinancialRecord.category != 'Sales'),
+        expenses=by_category(FinancialType.EXPENSE),
+    )
+
+
 @bp.get('/financial/income-statement.pdf')
 def income_statement():
     month, year = _period_args()
     start, end = month_range(year, month)
-    revenue = _sum(Invoice.total_amount, *_invoiced(start, end))
-    other = _sum(FinancialRecord.amount, *_records(FinancialType.INCOME, start, end),
-                 FinancialRecord.category != 'Sales')
-    cogs = db_session.query(sa.func.sum(InvoiceItem.cost_price * InvoiceItem.quantity)).join(Invoice) \
-        .filter(*_invoiced(start, end)).scalar() or 0
-    expenses = _sum(FinancialRecord.amount, *_records(FinancialType.EXPENSE, start, end))
-    rows = [('Revenue', None), ('Sales (invoiced)', revenue), ('Other Income', other),
-            ('Total Revenue', revenue + other), ('Cost of Goods Sold', cogs),
-            ('Gross Profit', revenue + other - cogs), ('Operating Expenses', expenses),
-            ('Net Profit', revenue + other - cogs - expenses)]
-    buf = pdfs.statement_pdf(g.company, f"Income Statement - {start.strftime('%B %Y')}", rows)
+    month_fig = _statement_figures(start, end)
+    ytd_fig = _statement_figures(datetime(year, 1, 1), end)
+    buf = statements.income_statement_pdf(g.company, start, month_fig, ytd_fig)
     return pdf_response(buf, f'income_statement_{month}_{year}.pdf')
 
 
@@ -1165,17 +1177,15 @@ def income_statement():
 def balance_sheet():
     month, year = _period_args()
     start, end = month_range(year, month)
-    inventory_value = db_session.query(sa.func.sum(
-        sa.func.coalesce(sa.func.nullif(Inventory.cost_price, 0), Inventory.unit_price) * Inventory.quantity
-    )).scalar() or 0
-    receivables = _sum(Invoice.balance_due, Invoice.status != InvoiceStatus.CANCELLED, Invoice.date_created < end)
+    value = sa.func.coalesce(sa.func.nullif(Inventory.cost_price, 0), Inventory.unit_price) * Inventory.quantity
+    inventory = db_session.query(Inventory.category, sa.func.sum(value)).group_by(Inventory.category).all()
+    unpaid = (Invoice.status != InvoiceStatus.CANCELLED, Invoice.date_created < end)
+    receivables = _sum(Invoice.balance_due, *unpaid)
+    open_invoices = db_session.query(sa.func.count(Invoice.id)).filter(*unpaid, Invoice.balance_due > 0.004).scalar() or 0
     liabilities = _sum(FinancialRecord.amount, FinancialRecord.type == FinancialType.EXPENSE,
                        FinancialRecord.category.in_(['Loan', 'Credit', 'Liability']), FinancialRecord.date < end)
-    assets = inventory_value + receivables
-    rows = [('Assets', None), ('Inventory', inventory_value), ('Accounts Receivable', receivables),
-            ('Total Assets', assets), ('Liabilities & Equity', None), ('Liabilities', liabilities),
-            ('Equity', assets - liabilities), ('Total Liabilities & Equity', assets)]
-    buf = pdfs.statement_pdf(g.company, f"Balance Sheet - {start.strftime('%B %Y')}", rows)
+    buf = statements.balance_sheet_pdf(g.company, end - timedelta(days=1), [(c, v or 0) for c, v in inventory],
+                                       receivables, open_invoices, liabilities)
     return pdf_response(buf, f'balance_sheet_{month}_{year}.pdf')
 
 
