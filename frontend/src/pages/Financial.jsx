@@ -5,6 +5,7 @@ import { BarChart, DoughnutChart, PALETTE, TrendChart } from '../components/Char
 import FormFields from '../components/FormFields.jsx';
 import Modal from '../components/Modal.jsx';
 import { useToast } from '../components/Toast.jsx';
+import { useConfirm } from '../components/ConfirmDialog.jsx';
 import { EmptyRow, ErrorBox, IconButton, Loading, PageHeader, StatCard, StatusBadge } from '../components/ui.jsx';
 import { date, money, today } from '../format.js';
 import { useApi } from '../hooks.js';
@@ -14,6 +15,7 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 
 export default function Financial() {
   const notify = useToast();
+  const confirm = useConfirm();
   const types = useEnum('financial_type');
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -42,7 +44,7 @@ export default function Financial() {
   };
 
   const removeRecord = async (r) => {
-    if (!window.confirm(`Delete "${r.description || r.category}" (${money(r.amount)})?`)) return;
+    if (!(await confirm(`Delete "${r.description || r.category}" (${money(r.amount)})?`))) return;
     try {
       await api.del(`/financial-records/${r.id}`);
       notify('Record deleted');

@@ -6,6 +6,7 @@ import Modal from '../components/Modal.jsx';
 import PaymentPlanModal from '../components/PaymentPlanModal.jsx';
 import StockInModal from '../components/StockInModal.jsx';
 import { useToast } from '../components/Toast.jsx';
+import { useConfirm } from '../components/ConfirmDialog.jsx';
 import { ErrorBox, IconButton, Loading, StatusBadge } from '../components/ui.jsx';
 import { date, humanize, money, number } from '../format.js';
 import { useApi } from '../hooks.js';
@@ -17,6 +18,7 @@ export default function DocumentView({ kind }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const notify = useToast();
+  const confirm = useConfirm();
   const isInvoice = kind === 'invoice';
   const base = isInvoice ? '/invoices' : '/quotations';
   const { data: doc, loading, error, reload } = useApi(`${base}/${id}`);
@@ -73,7 +75,7 @@ export default function DocumentView({ kind }) {
 
   const remove = async () => {
     const msg = isInvoice ? 'Delete this invoice? Stock will be restored and its payments deleted.' : 'Delete this quotation?';
-    if (!window.confirm(msg)) return;
+    if (!(await confirm(msg))) return;
     if (await run(() => api.del(`${base}/${id}`), `${isInvoice ? 'Invoice' : 'Quotation'} deleted`)) navigate(base);
   };
 
@@ -110,12 +112,12 @@ export default function DocumentView({ kind }) {
   };
 
   const removePlan = async () => {
-    if (!window.confirm('Remove this payment plan? The invoice goes back to a single due date.')) return;
+    if (!(await confirm('Remove this payment plan? The invoice goes back to a single due date.'))) return;
     if (await run(() => api.del(`/invoices/${id}/plan`), 'Payment plan removed')) reload();
   };
 
   const deletePayment = async (p) => {
-    if (!window.confirm(`Delete payment of ${money(p.amount)}? The invoice balance will be increased.`)) return;
+    if (!(await confirm(`Delete payment of ${money(p.amount)}? The invoice balance will be increased.`))) return;
     if (await run(() => api.del(`/payments/${p.id}`), 'Payment deleted')) reload();
   };
 

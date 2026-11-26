@@ -4,6 +4,7 @@ import { api, pdfUrl } from '../api.js';
 import FormFields from '../components/FormFields.jsx';
 import Modal from '../components/Modal.jsx';
 import { useToast } from '../components/Toast.jsx';
+import { useConfirm } from '../components/ConfirmDialog.jsx';
 import { EmptyRow, ErrorBox, IconButton, Loading, PageHeader, SearchBox, StatCard } from '../components/ui.jsx';
 import { date, humanize, money, toDateInput } from '../format.js';
 import { useApi } from '../hooks.js';
@@ -11,6 +12,7 @@ import { useEnum } from '../meta.jsx';
 
 export default function Payments() {
   const notify = useToast();
+  const confirm = useConfirm();
   const methods = useEnum('payment_type');
   const { data, loading, error, reload } = useApi('/payments', []);
   const [search, setSearch] = useState('');
@@ -39,7 +41,7 @@ export default function Payments() {
   };
 
   const remove = async (p) => {
-    if (!window.confirm(`Delete payment ${p.transaction_id} of ${money(p.amount)}? The invoice balance will be increased.`)) return;
+    if (!(await confirm(`Delete payment ${p.transaction_id} of ${money(p.amount)}? The invoice balance will be increased.`))) return;
     try {
       await api.del(`/payments/${p.id}`);
       notify('Payment deleted');

@@ -6,15 +6,18 @@ import '@fortawesome/fontawesome-free/css/all.min.css';
 import './styles.css';
 import App from './App.jsx';
 import { AuthProvider } from './auth.jsx';
+import { ConfirmProvider } from './components/ConfirmDialog.jsx';
 import { ToastProvider } from './components/Toast.jsx';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <ToastProvider>
-        <AuthProvider>
-          <App />
-        </AuthProvider>
+        <ConfirmProvider>
+          <AuthProvider>
+            <App />
+          </AuthProvider>
+        </ConfirmProvider>
       </ToastProvider>
     </BrowserRouter>
   </React.StrictMode>,

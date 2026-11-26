@@ -5,6 +5,7 @@ import { useApi } from '../hooks.js';
 import FormFields from './FormFields.jsx';
 import Modal from './Modal.jsx';
 import { useToast } from './Toast.jsx';
+import { useConfirm } from './ConfirmDialog.jsx';
 import { useAuth } from '../auth.jsx';
 import { EmptyRow, ErrorBox, IconButton, Loading, PageHeader, SearchBox } from './ui.jsx';
 
@@ -30,6 +31,7 @@ export default function CrudPage({ config }) {
     canEdit = true, defaults = () => ({}), toPayload, subtitle, deleteWarning,
   } = config;
   const notify = useToast();
+  const confirm = useConfirm();
   const writable = useAuth().canWrite(endpoint);
   const { data: rows, loading, error, reload } = useApi(endpoint, []);
   const [search, setSearch] = useState('');
@@ -82,7 +84,7 @@ export default function CrudPage({ config }) {
 
   const remove = async (row) => {
     const msg = `Delete this ${singular.toLowerCase()}?${deleteWarning ? `\n\n${deleteWarning}` : ''}`;
-    if (!window.confirm(msg)) return;
+    if (!(await confirm(msg))) return;
     try {
       await api.del(`${endpoint}/${encodeURIComponent(row[idKey])}`);
       notify(`${singular} deleted`);

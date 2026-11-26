@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import FormFields from '../components/FormFields.jsx';
 import Modal from '../components/Modal.jsx';
 import { useToast } from '../components/Toast.jsx';
+import { useConfirm } from '../components/ConfirmDialog.jsx';
 import { EmptyRow, ErrorBox, IconButton, Loading, PageHeader, SearchBox, StatCard } from '../components/ui.jsx';
 import { dateTime, humanize, money } from '../format.js';
 import { useApi } from '../hooks.js';
@@ -12,6 +13,7 @@ const blank = () => ({ name: '', brand: '', category: '', specifications: '', qu
 
 export default function Inventory() {
   const notify = useToast();
+  const confirm = useConfirm();
   const reasons = useEnum('stock_change_reason');
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
@@ -87,7 +89,7 @@ export default function Inventory() {
   };
 
   const remove = async (item) => {
-    if (!window.confirm(`Delete "${item.name}"? Its stock history will be removed; quotations and invoices keep their line descriptions.`)) return;
+    if (!(await confirm(`Delete "${item.name}"? Its stock history will be removed; quotations and invoices keep their line descriptions.`))) return;
     try {
       await api.del(`/inventory/${item.id}`);
       notify('Item deleted');

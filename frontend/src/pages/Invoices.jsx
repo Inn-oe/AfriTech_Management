@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, pdfUrl } from '../api.js';
 import { useToast } from '../components/Toast.jsx';
+import { useConfirm } from '../components/ConfirmDialog.jsx';
 import { EmptyRow, ErrorBox, IconButton, Loading, PageHeader, SearchBox, StatCard, StatusBadge } from '../components/ui.jsx';
 import { date, money } from '../format.js';
 import { useApi } from '../hooks.js';
@@ -9,6 +10,7 @@ import { useEnum } from '../meta.jsx';
 
 export default function Invoices() {
   const notify = useToast();
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const statuses = useEnum('invoice_status');
   const [params, setParams] = useSearchParams();
@@ -30,7 +32,7 @@ export default function Invoices() {
   }), { billed: 0, paid: 0, due: 0 });
 
   const remove = async (inv) => {
-    if (!window.confirm(`Delete invoice ${inv.invoice_number}? Stock will be restored and its payments deleted.`)) return;
+    if (!(await confirm(`Delete invoice ${inv.invoice_number}? Stock will be restored and its payments deleted.`))) return;
     try {
       await api.del(`/invoices/${inv.id}`);
       notify('Invoice deleted and stock restored');

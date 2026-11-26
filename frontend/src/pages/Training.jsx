@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { useToast } from '../components/Toast.jsx';
+import { useConfirm } from '../components/ConfirmDialog.jsx';
 import { ErrorBox, Loading, PageHeader } from '../components/ui.jsx';
 import { useApi } from '../hooks.js';
 
@@ -117,6 +118,7 @@ function Review({ intents, canEdit, onChanged }) {
 /** Edit one intent: how the bot reacts, its replies, and the example phrases it learns from. */
 function IntentEditor({ intent, meta, canEdit, onSaved, onDeleted, onExamples }) {
   const notify = useToast();
+  const confirm = useConfirm();
   const isNew = !intent;
   const [form, setForm] = useState(null);
   const [examples, setExamples] = useState([]);
@@ -143,7 +145,7 @@ function IntentEditor({ intent, meta, canEdit, onSaved, onDeleted, onExamples })
     }
   };
   const remove = async () => {
-    if (!window.confirm(`Delete "${form.name}" and all its example phrases?`)) return;
+    if (!(await confirm(`Delete "${form.name}" and all its example phrases?`))) return;
     try {
       await api.del(`/whatsapp/training/intents/${form.name}`);
       onDeleted();
