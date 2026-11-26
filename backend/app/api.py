@@ -643,6 +643,36 @@ def generate_document_number(customer, model, field):
     return candidate
 
 
+def invoice_number_for(invoice):
+    """The number an invoice should carry: its quotation's number when that is free, otherwise one made from the
+    customer's name and ID, the same format as quotations (e.g. MA000123)."""
+    q = invoice.quotation
+    if q is not None and q.quotation_number:
+        with unscoped():
+            taken = db_session.query(Invoice).filter(Invoice.invoice_number == q.quotation_number,
+                                                     Invoice.id != invoice.id).first()
+        if taken is None:
+            return q.quotation_number
+    if invoice.customer is None:
+        return None
+    return generate_document_number(invoice.customer, Invoice, 'invoice_number')
+
+
+def assign_missing_invoice_numbers():
+    """Invoices brought in without a number get one in the customer-name format (run at start-up)."""
+    missing = db_session.query(Invoice).filter(sa.or_(Invoice.invoice_number.is_(None), Invoice.invoice_number == '')) \
+        .order_by(Invoice.id).all()
+    done = 0
+    for invoice in missing:
+        number = invoice_number_for(invoice)
+        if number:
+            invoice.invoice_number = number
+            db_session.flush()
+            done += 1
+    db_session.commit()
+    return done
+
+
 def parse_lines(items):
     """Validate line items from the client: [{inventory_id?, description?, quantity, unit_price}]."""
     lines = []

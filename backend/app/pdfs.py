@@ -191,7 +191,7 @@ def quotation_pdf(company, q):
 
 
 def invoice_pdf(company, inv):
-    story = _letterhead(company, 'Tax Invoice', inv.invoice_number or f'INV-{inv.id:05d}')
+    story = _letterhead(company, 'Tax Invoice', inv.invoice_number or str(inv.id))
     story += [_detail('Customer', customer_name(inv.customer)),
               _detail('Date', inv.date_created.strftime('%d-%m-%Y')),
               _detail('Status', inv.status.value if inv.status else ''),

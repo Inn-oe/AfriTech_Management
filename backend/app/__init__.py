@@ -20,7 +20,7 @@ from . import giebee_import
 from .default_categories import add_default_categories, add_defaults_to_existing_companies
 from .platform_usage import platform_bp
 from .auth import auth_bp
-from .api import bp as api_bp
+from .api import assign_missing_invoice_numbers, bp as api_bp
 from .whatsapp import bp as whatsapp_bp
 from .models import Company, User
 
@@ -160,6 +160,17 @@ def create_app():
     except Exception:  # keep the app bootable so /_health can report the problem
         log.exception('Database initialisation failed')
     else:
+        # Invoices brought in without a number get one in the customer-name format, like quotations.
+        try:
+            with app.app_context():
+                numbered = assign_missing_invoice_numbers()
+            if numbered:
+                log.info('Gave %d invoices a number in the customer-name format', numbered)
+        except Exception:
+            db_session.rollback()
+            log.exception('Could not number invoices that had no number')
+        finally:
+            db_session.remove()
         giebee_import.start_in_background()   # no-op unless GIEBEE_IMPORT_SOURCE_URL is set
 
     @app.teardown_appcontext
