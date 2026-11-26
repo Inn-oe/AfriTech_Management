@@ -11,6 +11,7 @@ from datetime import timedelta
 
 from flask import Flask, g, jsonify, request, send_from_directory
 from sqlalchemy import LargeBinary, inspect, text
+from sqlalchemy.orm import configure_mappers
 from werkzeug.security import generate_password_hash
 from whitenoise import WhiteNoise
 
@@ -133,6 +134,12 @@ def create_app():
     app.register_blueprint(api_bp)
     app.register_blueprint(whatsapp_bp)
     app.register_blueprint(platform_bp)
+
+    # Finish SQLAlchemy's model set-up now, on this one thread, before any other thread can run a query. Left to
+    # the first query, a background thread (the Giebee import) and the first web request could start it at the
+    # same moment; on the server that sometimes ended in "RecursionError: maximum recursion depth exceeded" and
+    # every page failed until the next restart.
+    configure_mappers()
 
     try:
         ensure_schema()
