@@ -94,6 +94,7 @@ def ensure_schema():
     additions = {
         'payments': [('payer_name', 'VARCHAR(100)')],
         'invoices': [('quotation_id', 'INTEGER REFERENCES quotations(id)')],
+        'invoice_items': [('cost_pending', 'BOOLEAN DEFAULT FALSE')],
         'companies': [('logo', str(LargeBinary().compile(dialect=engine.dialect))),
                       ('finance_defaults_added', 'BOOLEAN DEFAULT FALSE')],
     }

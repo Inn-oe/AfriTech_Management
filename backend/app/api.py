@@ -660,15 +660,65 @@ def parse_lines(items):
     return lines
 
 
-def check_stock(lines):
+def _needed(lines):
+    """{inventory id: (item, total quantity wanted across all lines)}."""
     needed = {}
     for line in lines:
         if line['inventory']:
             inv = line['inventory']
             needed[inv.id] = (inv, needed.get(inv.id, (inv, 0))[1] + line['quantity'])
-    for inv, qty in needed.values():
-        if (inv.quantity or 0) < qty:
-            raise ApiError(f'Insufficient stock for {inv.name}. Available: {inv.quantity}, required: {qty}')
+    return needed
+
+
+def plan_restock(lines, restock=None, auto=False):
+    """Work out what must be bought in because the shelf is short: {inventory id: (item, quantity, buying price or None)}.
+
+    `restock` is what the user entered ([{inventory_id, quantity, cost_price}]); with `auto` the shortfall itself is
+    bought in at an unknown price. A shortfall that was not covered is refused, so stock never goes negative.
+    """
+    entered = {}
+    for r in restock or []:
+        inv_id = parse_number(r.get('inventory_id'), int, 'stock-in item')
+        if inv_id is not None:
+            entered[inv_id] = r
+    plan = {}
+    for inv, qty in _needed(lines).values():
+        short = qty - (inv.quantity or 0)
+        if short <= 0:
+            continue
+        entry = entered.get(inv.id)
+        if entry is None and auto:
+            plan[inv.id] = (inv, short, None)
+            continue
+        if entry is None:
+            raise ApiError(f'{inv.name} is out of stock (available {inv.quantity or 0}, needed {qty}). '
+                           f'Stock in at least {short} to continue.')
+        buy = parse_number(entry.get('quantity'), int, f'{inv.name} stock-in quantity')
+        if not buy or buy < short:
+            raise ApiError(f'{inv.name}: stock in at least {short} (the invoice needs {qty}, {inv.quantity or 0} on hand).')
+        cost = parse_number(entry.get('cost_price'), float, f'{inv.name} buying price')
+        if cost is not None and cost < 0:
+            raise ApiError(f'{inv.name}: the buying price cannot be negative.')
+        plan[inv.id] = (inv, buy, cost)
+    return plan
+
+
+def apply_restock(plan, lines, invoice):
+    """Book the stock-in for items that were out of stock, and note on the lines whether their cost is still unknown."""
+    for inv, qty, cost in plan.values():
+        inv.quantity = (inv.quantity or 0) + qty
+        if cost is not None:
+            inv.cost_price = cost   # latest buying price, as on the Stock in button
+        note = f'Bought in for invoice {invoice.invoice_number or invoice.id} (was out of stock)'
+        db_session.add(StockTransaction(
+            inventory_id=inv.id, transaction_type=TransactionType.STOCK_IN, quantity=qty,
+            unit_price=cost, total_value=qty * (cost or 0), reference_id=invoice.id, reference_type='invoice_restock',
+            notes=note if cost is not None else f'{note}; buying price still to be added'))
+    for line in lines:
+        inv = line['inventory']
+        if inv is not None and inv.id in plan:
+            line['cost_price'] = inv.cost_price or 0.0
+            line['cost_pending'] = plan[inv.id][2] is None
 
 
 def _activity_type_id(data):
@@ -689,7 +739,7 @@ def _serialize_line(item):
     return {'id': item.id, 'inventory_id': item.inventory_id,
             'description': item.description or (item.inventory.name if item.inventory else 'Item'),
             'item_code': item.item_code, 'quantity': item.quantity, 'unit_price': item.unit_price,
-            'amount': round(item.quantity * item.unit_price, 2),
+            'amount': round(item.quantity * item.unit_price, 2), 'cost_pending': bool(getattr(item, 'cost_pending', False)),
             'stock_available': item.inventory.quantity if item.inventory else None}
 
 
@@ -792,7 +842,8 @@ def quotations_convert(pk):
               'item_code': i.item_code or (i.inventory.specifications if i.inventory else f'CUST-LEGACY-{i.id}')
               or 'INV-ITM', 'quantity': i.quantity, 'unit_price': i.unit_price,
               'cost_price': (i.inventory.cost_price if i.inventory else 0.0) or 0.0} for i in q.items]
-    check_stock(lines)
+    # Out-of-stock items are only bought in when the user agreed to it (the app asks first); the price is added later.
+    plan = plan_restock(lines, auto=bool(payload().get('allow_restock')))
 
     number = q.quotation_number
     with unscoped():
@@ -804,6 +855,7 @@ def quotations_convert(pk):
                       invoice_number=number, notes=q.notes)
     db_session.add(invoice)
     db_session.flush()
+    apply_restock(plan, lines, invoice)
     _write_invoice_items(invoice, lines, 'invoice', f'Converted from Quotation {q.quotation_number or q.id}')
     q.status = 'PROCESSED'
     db_session.commit()
@@ -865,7 +917,8 @@ def _write_invoice_items(inv, lines, ref_type, note):
         db_session.add(InvoiceItem(
             invoice_id=inv.id, inventory_id=inventory.id if inventory else None,
             item_code=line['item_code'], description=line['description'], quantity=line['quantity'],
-            unit_price=line['unit_price'], cost_price=line['cost_price'], amount=amount))
+            unit_price=line['unit_price'], cost_price=line['cost_price'], amount=amount,
+            cost_pending=bool(line.get('cost_pending'))))
         if inventory:
             inventory.quantity = (inventory.quantity or 0) - line['quantity']
             db_session.add(StockTransaction(
@@ -896,7 +949,7 @@ def invoices_create():
     data = payload()
     customer = require_customer(data.get('customer_id'))
     lines = parse_lines(data.get('items'))
-    check_stock(lines)
+    plan = plan_restock(lines, data.get('restock'))
     invoice = Invoice(customer_id=customer.identification_number,
                       activity_type_id=_activity_type_id(data),
                       total_amount=0, paid_amount=0, balance_due=0, status=InvoiceStatus.DRAFT,
@@ -905,6 +958,7 @@ def invoices_create():
                       invoice_number=generate_document_number(customer, Invoice, 'invoice_number'))
     db_session.add(invoice)
     db_session.flush()
+    apply_restock(plan, lines, invoice)
     _write_invoice_items(invoice, lines, 'invoice', 'Sold')
     db_session.commit()
     return jsonify(_serialize_invoice(invoice, detail=True)), 201
@@ -919,7 +973,8 @@ def invoices_update(pk):
     # Put the old items back on the shelf before validating the new quantities.
     _restore_invoice_stock(invoice, 'INVOICE_EDIT_REVERT', f'Reverting for invoice {invoice.invoice_number or pk} edit')
     db_session.flush()
-    check_stock(lines)
+    plan = plan_restock(lines, data.get('restock'))
+    apply_restock(plan, lines, invoice)
     invoice.customer_id = customer.identification_number
     invoice.activity_type_id = _activity_type_id(data)
     invoice.notes = data.get('notes') or None
@@ -959,6 +1014,32 @@ def invoices_delete(pk):
     db_session.delete(invoice)
     db_session.commit()
     return jsonify(ok=True)
+
+
+@bp.post('/invoices/<int:pk>/items/<int:item_id>/cost')
+def invoice_item_cost(pk, item_id):
+    """Add the buying price of an item that was bought in when it was sold (it was left blank at the time)."""
+    invoice = get_or_404(Invoice, pk, 'Invoice')
+    item = db_session.query(InvoiceItem).filter_by(id=item_id, invoice_id=invoice.id).first()
+    if item is None:
+        raise ApiError('Invoice item not found', 404)
+    cost = parse_number(payload().get('cost_price'), float, 'buying price')
+    if cost is None or cost < 0:
+        raise ApiError('Enter the buying price (zero or more).')
+    item.cost_price = cost
+    item.cost_pending = False
+    inv = item.inventory
+    if inv is not None:
+        if not inv.cost_price:
+            inv.cost_price = cost
+        # the stock-in booked with this invoice gets its price too
+        for t in db_session.query(StockTransaction).filter_by(
+                inventory_id=inv.id, reference_id=invoice.id, reference_type='invoice_restock').all():
+            if t.unit_price is None:
+                t.unit_price = cost
+                t.total_value = t.quantity * cost
+    db_session.commit()
+    return jsonify(_serialize_invoice(invoice, detail=True))
 
 
 @bp.get('/invoices/<int:pk>/pdf')

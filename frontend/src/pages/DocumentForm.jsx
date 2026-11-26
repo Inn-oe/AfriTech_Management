@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import CustomerPicker from '../components/CustomerPicker.jsx';
@@ -25,6 +25,7 @@ export default function DocumentForm({ kind }) {
 
   const [doc, setDoc] = useState({ customer_id: '', activity_type_id: '', due_date: '', notes: '', items: [newLine()] });
   const [original, setOriginal] = useState({}); // inventory qty already held by this invoice (edit mode)
+  const [restock, setRestock] = useState({}); // what the user typed for items that are out of stock: { [inventoryId]: { quantity, cost } }
   const [loadingDoc, setLoadingDoc] = useState(!!id);
   const [loadError, setLoadError] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -66,7 +67,8 @@ export default function DocumentForm({ kind }) {
 
   const total = doc.items.reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.unit_price) || 0), 0);
 
-  // Stock check per inventory item across all lines (invoices only — quotations don't move stock).
+  // Items the invoice needs more of than the shelf holds (invoices only — quotations don't move stock). These are not
+  // refused: the user bought them in right here, with the buying price now or left blank for later.
   const shortages = useMemo(() => {
     if (!isInvoice) return {};
     const need = {};
@@ -76,7 +78,7 @@ export default function DocumentForm({ kind }) {
     const out = {};
     Object.entries(need).forEach(([invId, qty]) => {
       const available = (invById[invId]?.quantity || 0) + (original[invId] || 0);
-      if (qty > available) out[invId] = available;
+      if (qty > available) out[invId] = { available, need: qty, short: qty - available, name: invById[invId]?.name || 'This item' };
     });
     return out;
   }, [doc.items, invById, original, isInvoice]);
@@ -91,11 +93,18 @@ export default function DocumentForm({ kind }) {
       unit_price: Number(l.unit_price),
     }));
     if (!items.length) return notify('Add at least one item', 'error');
+    const buyIn = Object.entries(shortages).map(([invId, s]) => ({
+      inventory_id: Number(invId),
+      quantity: Number(restock[invId]?.quantity ?? s.short),
+      cost_price: restock[invId]?.cost === '' || restock[invId]?.cost == null ? null : Number(restock[invId].cost),
+    }));
+    if (buyIn.some((b, i) => b.quantity < Object.values(shortages)[i].short)) return notify('Stock in at least the amount that is missing', 'error');
     setSaving(true);
     try {
       const body = {
         customer_id: doc.customer_id, notes: doc.notes, due_date: doc.due_date || null,
         activity_type_id: doc.activity_type_id || null, items,
+        ...(buyIn.length ? { restock: buyIn } : {}),
       };
       const saved = id ? await api.put(`${base}/${id}`, body) : await api.post(base, body);
       notify(`${label} ${saved.invoice_number || saved.quotation_number || ''} ${id ? 'updated' : 'created'}`);
@@ -112,14 +121,15 @@ export default function DocumentForm({ kind }) {
     return <ErrorBox error="This quotation has already been converted to an invoice and can no longer be edited." />;
   }
 
-  // Quotations/new invoices only offer in-stock items; editing keeps items already on the document.
-  const selectable = (inventory.data || []).filter((i) => i.quantity > 0 || original[i.id] || doc.items.some((l) => l.inventory_id === String(i.id)) || !isInvoice);
+  // Every product can be picked, even when none is on the shelf: an invoice then buys the missing ones in.
+  const selectable = inventory.data || [];
+  const setBuyIn = (invId, patch) => setRestock((r) => ({ ...r, [invId]: { ...r[invId], ...patch } }));
 
   return (
     <form onSubmit={submit}>
       <PageHeader title={id ? `Edit ${label} ${doc.number || ''}` : `New ${label}`} icon={isInvoice ? 'fa-file-invoice-dollar' : 'fa-file-signature'}>
         <Link to={id ? `${base}/${id}` : base} className="btn btn-light">Cancel</Link>
-        <button type="submit" className="btn btn-primary" disabled={saving || Object.keys(shortages).length > 0}>
+        <button type="submit" className="btn btn-primary" disabled={saving}>
           {saving && <span className="spinner-border spinner-border-sm me-2" />}
           <i className="fas fa-save me-2" />Save {label.toLowerCase()}
         </button>
@@ -170,18 +180,20 @@ export default function DocumentForm({ kind }) {
               {doc.items.map((l) => {
                 const inv = invById[l.inventory_id];
                 const short = shortages[l.inventory_id];
+                const firstOfItem = short && doc.items.find((x) => x.inventory_id === l.inventory_id)?.key === l.key;
                 return (
-                  <tr key={l.key}>
+                  <Fragment key={l.key}>
+                  <tr>
                     <td>
                       <select className="form-select" value={l.inventory_id} onChange={(e) => pickItem(l.key, e.target.value)} aria-label="Item">
                         <option value="">Select item…</option>
                         <option value="custom">✎ Custom item / service</option>
                         {selectable.map((i) => (
-                          <option key={i.id} value={i.id}>{i.name}{i.brand ? ` (${i.brand})` : ''} — {i.quantity} in stock</option>
+                          <option key={i.id} value={i.id}>{i.name}{i.brand ? ` (${i.brand})` : ''} — {i.quantity > 0 ? `${i.quantity} in stock` : 'OUT OF STOCK'}</option>
                         ))}
                       </select>
-                      {short !== undefined && <div className="small text-danger mt-1">Only {short} available</div>}
-                      {inv && short === undefined && isInvoice && <div className="small text-muted mt-1">{inv.quantity + (original[inv.id] || 0)} available</div>}
+                      {short && <div className="small text-warning-emphasis fw-semibold mt-1"><i className="fas fa-triangle-exclamation me-1" />{short.available > 0 ? `Only ${short.available} in stock` : 'Out of stock'}</div>}
+                      {inv && !short && isInvoice && <div className="small text-muted mt-1">{inv.quantity + (original[inv.id] || 0)} available</div>}
                     </td>
                     <td>
                       <input className="form-control" value={l.description} required={l.inventory_id === 'custom'}
@@ -189,7 +201,7 @@ export default function DocumentForm({ kind }) {
                         onChange={(e) => setLine(l.key, { description: e.target.value })} aria-label="Description" />
                     </td>
                     <td>
-                      <input type="number" min="1" step="1" className={`form-control ${short !== undefined ? 'is-invalid' : ''}`} value={l.quantity} required={!!l.inventory_id}
+                      <input type="number" min="1" step="1" className="form-control" value={l.quantity} required={!!l.inventory_id}
                         onChange={(e) => setLine(l.key, { quantity: e.target.value })} aria-label="Quantity" />
                     </td>
                     <td>
@@ -207,6 +219,35 @@ export default function DocumentForm({ kind }) {
                       </button>
                     </td>
                   </tr>
+                  {firstOfItem && (
+                    <tr className="table-warning">
+                      <td colSpan="6">
+                        <div className="d-flex flex-wrap align-items-end gap-3">
+                          <div className="flex-grow-1" style={{ minWidth: 240 }}>
+                            <div className="fw-semibold"><i className="fas fa-box-open me-2" />{short.name} is out of stock</div>
+                            <div className="small">{short.available} on hand, {short.need} needed. Stock in what is missing and the invoice will go through.</div>
+                          </div>
+                          <div style={{ width: 140 }}>
+                            <label className="form-label small mb-1">Stock in (qty)</label>
+                            <input type="number" min={short.short} step="1" className="form-control" required
+                              value={restock[l.inventory_id]?.quantity ?? short.short}
+                              onChange={(e) => setBuyIn(l.inventory_id, { quantity: e.target.value })} aria-label="Stock in quantity" />
+                          </div>
+                          <div style={{ width: 190 }}>
+                            <label className="form-label small mb-1">Buying price each (optional)</label>
+                            <div className="input-group">
+                              <span className="input-group-text">$</span>
+                              <input type="number" min="0" step="0.01" className="form-control" placeholder="add later"
+                                value={restock[l.inventory_id]?.cost ?? ''}
+                                onChange={(e) => setBuyIn(l.inventory_id, { cost: e.target.value })} aria-label="Buying price each" />
+                            </div>
+                          </div>
+                        </div>
+                        <div className="small text-muted mt-2">Do not know the buying price yet? Leave it blank. The invoice will remind you to add it later.</div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>

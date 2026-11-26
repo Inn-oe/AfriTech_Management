@@ -97,7 +97,7 @@ def test_selling_more_than_is_in_stock_is_refused(shop):
     c, cust, panel, inverter = shop
     r = c.post('/api/invoices', headers=H, json={'customer_id': cust['id'], 'items': [
         {'inventory_id': inverter['id'], 'quantity': 3, 'unit_price': 700}]})
-    assert r.status_code == 400 and 'Insufficient stock' in r.get_json()['error']
+    assert r.status_code == 400 and 'out of stock' in r.get_json()['error']
     assert qty(c, inverter) == 2
     out = c.post(f"/api/inventory/{inverter['id']}/stock-out", headers=H, json={'quantity': 5})
     assert out.status_code == 400

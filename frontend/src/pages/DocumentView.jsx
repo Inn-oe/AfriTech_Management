@@ -22,6 +22,7 @@ export default function DocumentView({ kind }) {
   const { company } = useAuth();
   const [payment, setPayment] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [costFor, setCostFor] = useState(null); // invoice line whose buying price is being added: { item, cost }
 
   if (loading && !doc) return <Loading />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
@@ -44,8 +45,22 @@ export default function DocumentView({ kind }) {
   };
 
   const convert = async () => {
-    if (!window.confirm('Convert this quotation to an invoice? Stock will be deducted.')) return;
-    const inv = await run(() => api.post(`/quotations/${id}/convert`));
+    // Items the shelf cannot cover are bought in on the new invoice, after asking.
+    const wanted = {};
+    doc.items.forEach((i) => {
+      if (i.inventory_id) wanted[i.inventory_id] = { name: i.description, need: (wanted[i.inventory_id]?.need || 0) + i.quantity, have: i.stock_available || 0 };
+    });
+    const missing = Object.values(wanted).filter((w) => w.need > w.have);
+    const message = missing.length
+      ? [
+        'Some items are out of stock:',
+        ...missing.map((w) => `- ${w.name}: ${w.have} on hand, ${w.need} needed`),
+        '',
+        'Convert anyway? The missing stock will be booked in on the invoice, and you can add the buying prices afterwards.',
+      ].join('\n')
+      : 'Convert this quotation to an invoice? Stock will be deducted.';
+    if (!window.confirm(message)) return;
+    const inv = await run(() => api.post(`/quotations/${id}/convert`, missing.length ? { allow_restock: true } : {}));
     if (inv) {
       notify(`Invoice ${inv.invoice_number} created`);
       navigate(`/invoices/${inv.id}`);
@@ -60,6 +75,15 @@ export default function DocumentView({ kind }) {
 
   const setStatus = async (status) => {
     if (await run(() => api.post(`/invoices/${id}/status`, { status }), `Invoice marked as ${humanize(status)}`)) reload();
+  };
+
+  const saveCost = async (e) => {
+    e.preventDefault();
+    const ok = await run(() => api.post(`/invoices/${id}/items/${costFor.item.id}/cost`, { cost_price: Number(costFor.cost) }), 'Buying price saved');
+    if (ok) {
+      setCostFor(null);
+      reload();
+    }
   };
 
   const savePayment = async (e) => {
@@ -148,7 +172,16 @@ export default function DocumentView({ kind }) {
                   <tr key={item.id}>
                     <td>{i + 1}</td>
                     <td><code>{item.item_code || '—'}</code></td>
-                    <td>{item.description}</td>
+                    <td>
+                      {item.description}
+                      {isInvoice && item.cost_pending && (
+                        <div className="no-print mt-1">
+                          <button type="button" className="btn btn-sm btn-warning py-0" onClick={() => setCostFor({ item, cost: '' })}>
+                            <i className="fas fa-tag me-1" />Add buying price
+                          </button>
+                        </div>
+                      )}
+                    </td>
                     <td className="text-end">{item.quantity}</td>
                     <td className="text-end">{money(item.unit_price)}</td>
                     <td className="text-end">{money(item.amount)}</td>
@@ -211,6 +244,27 @@ export default function DocumentView({ kind }) {
             </table>
           </div>
         </div>
+      )}
+
+      {costFor && (
+        <Modal title="Add buying price" onClose={() => setCostFor(null)}>
+          <p className="text-muted small mb-3">
+            <strong>{costFor.item.description}</strong> was out of stock when this invoice was raised, so it was bought in.
+            Enter what each one cost you; it is used for your profit figures.
+          </p>
+          <form id="cost-form" onSubmit={saveCost}>
+            <label className="form-label" htmlFor="cost">Buying price (each)</label>
+            <div className="input-group">
+              <span className="input-group-text">$</span>
+              <input id="cost" type="number" min="0" step="0.01" className="form-control" required autoFocus
+                value={costFor.cost} onChange={(e) => setCostFor((c) => ({ ...c, cost: e.target.value }))} />
+            </div>
+          </form>
+          <div className="d-flex justify-content-end gap-2 mt-4">
+            <button type="button" className="btn btn-light" onClick={() => setCostFor(null)}>Cancel</button>
+            <button type="submit" form="cost-form" className="btn btn-primary" disabled={busy}>Save</button>
+          </div>
+        </Modal>
       )}
 
       {payment && (

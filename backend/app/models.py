@@ -390,6 +390,7 @@ class InvoiceItem(TenantMixin, Base):
     quantity = Column(Integer, nullable=False)
     unit_price = Column(Float, nullable=False)
     cost_price = Column(Float, default=0.0)
+    cost_pending = Column(Boolean, default=False)   # bought in when sold and the buying price was left blank
     amount = Column(Float, nullable=False)
 
 class Payment(TenantMixin, Base):
