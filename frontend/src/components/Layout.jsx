@@ -91,7 +91,7 @@ export default function Layout() {
         </header>
 
         <main className="main-content">
-          {visible && <div className="eyebrow mb-1">SolarPilot / <b>{visible.label}</b></div>}
+          {visible && <div className="eyebrow mb-1">Afritech / <b>{visible.label}</b></div>}
           {visible && visible.tabs.length > 1 && (
             <nav className="section-tabs" aria-label={`${visible.label} sections`}>
               {visible.tabs.map((t) => (

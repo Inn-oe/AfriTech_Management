@@ -1,4 +1,4 @@
-# SolarPilot - Solar Business Management
+# Afritech Management Book
 
 Multi-company management platform for solar installers: customers, quotations, invoices, payments,
 inventory, projects, finances, reports and a WhatsApp leads tab. Each company that signs up gets its

@@ -17,7 +17,7 @@ PAGE_W, PAGE_H = letter
 MARGIN = 0.5 * inch
 CONTENT_W = PAGE_W - 2 * MARGIN
 BAND_H = 1.2 * inch
-PRODUCT = 'SolarPilot'
+PRODUCT = 'Afritech Management Book'
 
 DEFAULT_BRAND = '#0f7b5a'
 INK = colors.HexColor('#1f2933')
