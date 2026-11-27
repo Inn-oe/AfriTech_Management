@@ -10,6 +10,7 @@ from datetime import datetime
 from .models import InvoiceStatus
 
 MAX_MONTHS = 60
+DEFAULT_TERM_MONTHS = 3      # an invoice with no agreed due date or payment plan is due this many months after it is raised
 
 
 def add_months(day, months):
@@ -18,6 +19,17 @@ def add_months(day, months):
     year += day.year
     month = month0 + 1
     return day.replace(year=year, month=month, day=min(day.day, calendar.monthrange(year, month)[1]))
+
+
+def effective_due(inv):
+    """When the invoice is really due. A due date on the very day the invoice was raised is only the old default,
+    not a deadline anyone chose, so such invoices (and any without a date) are due 3 months after they were raised."""
+    due, created = inv.due_date, inv.date_created
+    if created is None:
+        return due
+    if due is None or due.date() == created.date():
+        return add_months(created, DEFAULT_TERM_MONTHS)
+    return due
 
 
 def build_schedule(balance, months, first_due):
@@ -62,6 +74,7 @@ def overdue_info(inv, today=None):
     if plan is not None:
         late = plan['overdue_amount'] > 0
         return late, plan['overdue_amount'], plan['overdue_since']
-    if inv.due_date and inv.due_date.date() < today.date():
-        return True, round(inv.balance_due, 2), inv.due_date.isoformat()
+    due = effective_due(inv)
+    if due and due.date() < today.date():
+        return True, round(inv.balance_due, 2), due.isoformat()
     return False, 0.0, None

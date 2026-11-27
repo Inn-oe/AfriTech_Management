@@ -161,6 +161,7 @@ export default function DocumentForm({ kind }) {
               <label className="form-label" htmlFor="due">{isInvoice ? 'Due date' : 'Valid until'}</label>
               <input id="due" type="date" className="form-control" value={doc.due_date}
                 onChange={(e) => setDoc((d) => ({ ...d, due_date: e.target.value }))} />
+              {isInvoice && <div className="form-text">Leave empty: due 3 months after the invoice date.</div>}
             </div>
           </div>
         </div>

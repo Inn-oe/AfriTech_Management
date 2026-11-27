@@ -128,3 +128,32 @@ def test_deleting_the_invoice_removes_its_plan(owed):
     post(c, f'/api/invoices/{inv_id}/plan', {'months': 3})
     assert c.delete(f'/api/invoices/{inv_id}', headers=H).status_code == 200
     assert c.get(f'/api/invoices/{inv_id}').status_code == 404
+
+
+def test_an_invoice_is_not_overdue_until_three_months_after_it_was_raised(owed):
+    """Old invoices whose due date is just the day they were made (the former default) get 3 months, not 1 day."""
+    from datetime import datetime
+    from app.database import db_session
+    from app.models import Invoice
+    c, inv_id = owed
+    fresh = invoice(c, inv_id)
+    assert fresh['overdue'] is False and fresh['due_date'][:7] == add_months(datetime.now(), 3).isoformat()[:7]
+
+    def backdate(days, due_days):
+        with c.application.app_context():
+            row = db_session.get(Invoice, inv_id)
+            row.date_created = datetime.now() - timedelta(days=days)
+            row.due_date = datetime.now() - timedelta(days=due_days)    # the same day it was raised, as the old default did
+            db_session.commit()
+            db_session.remove()
+
+    backdate(14, 14)                                   # two weeks old, due "the same day": not overdue yet
+    inv = invoice(c, inv_id)
+    assert inv['overdue'] is False and inv['display_status'] == 'PARTIAL'
+    backdate(100, 100)                                 # over three months old and unpaid: overdue
+    inv = invoice(c, inv_id)
+    assert inv['overdue'] is True and inv['overdue_amount'] == 600 and inv['display_status'] == 'OVERDUE'
+    backdate(100, 40)                                  # someone chose a due date 40 days ago: that date is respected
+    assert invoice(c, inv_id)['overdue'] is True
+    backdate(20, -30)                                  # a chosen due date still to come: not overdue
+    assert invoice(c, inv_id)['overdue'] is False

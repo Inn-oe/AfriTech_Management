@@ -9,7 +9,7 @@ from flask import Blueprint, g, jsonify, request, send_file
 from sqlalchemy.orm import selectinload
 
 from . import pdfs, statements
-from .payment_plans import MAX_MONTHS, add_months, build_schedule, overdue_info, plan_view
+from .payment_plans import DEFAULT_TERM_MONTHS, MAX_MONTHS, add_months, build_schedule, effective_due, overdue_info, plan_view
 from .auth import ApiError, find, protect, unscoped
 from .database import db_session, engine
 from .models import (InvoiceInstallment, Activity, ActivityStatusEnum, ActivityType, Currency, Customer, FinancialCategory,
@@ -893,7 +893,7 @@ def quotations_convert(pk):
     if not number or taken:
         number = generate_document_number(q.customer, Invoice, 'invoice_number')
     invoice = Invoice(customer_id=q.customer_id, quotation_id=q.id, total_amount=0, paid_amount=0,
-                      balance_due=0, status=InvoiceStatus.DRAFT, due_date=datetime.now(),
+                      balance_due=0, status=InvoiceStatus.DRAFT, due_date=add_months(datetime.now(), DEFAULT_TERM_MONTHS),
                       invoice_number=number, notes=q.notes)
     db_session.add(invoice)
     db_session.flush()
@@ -933,7 +933,8 @@ def _serialize_invoice(inv, detail=False):
                activity_type_name=inv.activity_type.name if inv.activity_type else None,
                quotation_number=inv.quotation.quotation_number if inv.quotation else None)
     late, late_amount, late_since = overdue_info(inv)
-    data.update(overdue=late, overdue_amount=late_amount, overdue_since=late_since, has_plan=bool(inv.installments),
+    due = effective_due(inv)
+    data.update(due_date=due.isoformat() if due else None, overdue=late, overdue_amount=late_amount, overdue_since=late_since, has_plan=bool(inv.installments),
                 display_status='OVERDUE' if late else to_json(inv.status))
     if detail:
         data['items'] = [_serialize_line(i) for i in inv.items]
@@ -1000,7 +1001,7 @@ def invoices_create():
     invoice = Invoice(customer_id=customer.identification_number,
                       activity_type_id=_activity_type_id(data),
                       total_amount=0, paid_amount=0, balance_due=0, status=InvoiceStatus.DRAFT,
-                      due_date=parse_date(data.get('due_date')) or datetime.now(),
+                      due_date=parse_date(data.get('due_date')) or add_months(datetime.now(), DEFAULT_TERM_MONTHS),
                       notes=data.get('notes') or None,
                       invoice_number=generate_document_number(customer, Invoice, 'invoice_number'))
     db_session.add(invoice)
