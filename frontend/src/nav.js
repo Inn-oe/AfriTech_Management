@@ -43,6 +43,14 @@ export const SECTIONS = [
       { to: '/payments', label: 'Payments', module: 'sales' },
     ],
   },
+  {
+    key: 'shop', label: 'Online shop', icon: 'fa-store',
+    tabs: [
+      { to: '/shop-orders', label: 'Shop orders', module: 'admin', feature: 'operator' },
+      { to: '/shop-products', label: 'Shop products', module: 'admin', feature: 'operator' },
+      { to: '/shop-settings', label: 'Shop settings', module: 'admin', feature: 'operator' },
+    ],
+  },
   { key: 'reports', label: 'Reports & Analytics', icon: 'fa-chart-column', tabs: [{ to: '/reports', label: 'Reports', module: 'finance' }] },
   {
     key: 'settings', label: 'Settings', icon: 'fa-gear',

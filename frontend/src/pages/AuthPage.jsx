@@ -1,23 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
-import { Brand, PRODUCT_NAME } from '../components/Brand.jsx';
-
-// The trades the platform is built for. `noun` fills the hero sentence when a chip is picked.
-const TRADES = [
-  { key: 'solar', label: 'Solar', icon: 'fa-solar-panel', tone: 'amber', noun: 'solar',
-    title: 'Solar installers', text: 'Quote systems from your own price list, track installations and collect deposits and instalments.',
-    photo: '/landing/solar.jpg', photoAlt: 'Technician in a hard hat installing solar panels' },
-  { key: 'cctv', label: 'CCTV', icon: 'fa-video', tone: 'teal', noun: 'CCTV and security',
-    title: 'CCTV installers', text: 'Handle camera quotes, site installs, maintenance visits and customer follow-ups.',
-    photo: '/landing/cctv.jpg', photoAlt: 'Technician fitting a security camera to a wall' },
-  { key: 'water', label: 'Borehole & Water', icon: 'fa-droplet', tone: 'blue', noun: 'borehole and water',
-    title: 'Borehole & water', text: 'Track drilling jobs, pump installs, travel to site and every payment for each borehole.',
-    photo: '/landing/borehole.jpg', photoAlt: 'Worker beside a borehole drilling rig' },
-  { key: 'alarms', label: 'Alarms & Access', icon: 'fa-shield-halved', tone: 'red', noun: 'alarm and access-control',
-    title: 'Alarms & access control', text: 'Manage alarm, intruder, electric-fence and access-control jobs from quote to handover.',
-    photo: '/landing/alarms.jpg', photoAlt: 'Technician in a hard hat fitting a security device to a wall' },
-];
+import { PRODUCT_NAME } from '../components/Brand.jsx';
+import { PartnerBadge, PublicFooter, PublicNav, TRADES, useCart } from '../components/PublicSite.jsx';
+import { ProductCard } from './Shop.jsx';
 
 const FEATURES = [
   { icon: 'fa-file-lines', title: 'Quotations', text: 'Professional quotes with your logo, turned into invoices in one click.' },
@@ -29,6 +16,33 @@ const FEATURES = [
   { icon: 'fa-chart-column', title: 'Reports', text: 'Sales, income, expenses and profit in clear charts and reports.' },
   { icon: 'fa-truck-pickup', title: 'Fuel & mileage', text: 'Log fuel, mileage and journeys so travel costs are not forgotten.' },
 ];
+
+/** A few items from the equipment shop, with a link to the full shop. Hidden while the shop has no listed items. */
+function ShopTeaser() {
+  const cart = useCart();
+  const navigate = useNavigate();
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    api.get('/shop/products?limit=8').then((r) => setItems(r.products)).catch(() => setItems([]));
+  }, []);
+  if (!items.length) return null;
+  const add = (p) => { cart.add(p); navigate('/shop'); window.scrollTo({ top: 0 }); };
+  return (
+    <section id="shop" className="lp-section lp-shop">
+      <div className="lp-wrap">
+        <div className="lp-eyebrow dark">Equipment shop</div>
+        <h2 className="lp-h2">Buy solar, CCTV, borehole &amp; alarm equipment</h2>
+        <p className="lp-sub">Order online and we deliver. Pay by EcoCash, bank transfer or cash once we confirm your order.</p>
+        <div className="sp-grid">
+          {items.map((p) => <ProductCard key={p.id} p={p} onAdd={add} added={false} />)}
+        </div>
+        <div className="text-center mt-4">
+          <Link to="/shop" className="btn btn-primary btn-lg px-4"><i className="fas fa-store me-2" />Visit the shop</Link>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 const BENEFITS = [
   { icon: 'fa-hand-holding-dollar', title: 'Get paid on time', text: 'Deposits, instalments and overdue alerts show exactly who owes you and since when, with no chasing through notebooks.' },
@@ -129,7 +143,6 @@ export default function AuthPage({ mode }) {
   const [busy, setBusy] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const [trade, setTrade] = useState(null);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   const active = TRADES.find((t) => t.key === trade);
 
@@ -161,27 +174,11 @@ export default function AuthPage({ mode }) {
     }
   };
 
-  const go = (path) => { setMenuOpen(false); navigate(path); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const go = (path) => { navigate(path); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
   return (
     <div className="lp">
-      {/* ---------- Top bar ---------- */}
-      <header className="lp-nav">
-        <div className="lp-wrap lp-nav-inner">
-          <Brand to="/" />
-          <nav className={`lp-links${menuOpen ? ' open' : ''}`}>
-            <a href="#industries" onClick={() => setMenuOpen(false)}>Industries</a>
-            <a href="#features" onClick={() => setMenuOpen(false)}>Features</a>
-            <a href="#benefits" onClick={() => setMenuOpen(false)}>Benefits</a>
-            <a href="#how" onClick={() => setMenuOpen(false)}>How it works</a>
-            <button type="button" className="btn btn-outline-light btn-sm px-3" onClick={() => go('/login')}>Sign in</button>
-          </nav>
-          <button type="button" className="btn lp-cta btn-sm px-3" onClick={() => go('/signup')}>Get started</button>
-          <button type="button" className="lp-burger" aria-label="Menu" onClick={() => setMenuOpen((o) => !o)}>
-            <i className={`fas ${menuOpen ? 'fa-xmark' : 'fa-bars'}`} />
-          </button>
-        </div>
-      </header>
+      <PublicNav />
 
       {/* ---------- Hero + auth card ---------- */}
       <section className="lp-hero">
@@ -200,6 +197,10 @@ export default function AuthPage({ mode }) {
                   <i className={`fas ${t.icon}`} />{t.label}
                 </button>
               ))}
+            </div>
+            <div className="lp-hero-actions">
+              <Link to="/shop" className="btn lp-cta"><i className="fas fa-store me-2" />Shop equipment</Link>
+              <PartnerBadge />
             </div>
             <HeroArt />
           </div>
@@ -280,6 +281,8 @@ export default function AuthPage({ mode }) {
         </div>
       </section>
 
+      <ShopTeaser />
+
       {/* ---------- Features ---------- */}
       <section id="features" className="lp-section lp-alt">
         <div className="lp-wrap">
@@ -357,9 +360,7 @@ export default function AuthPage({ mode }) {
         </div>
       </section>
 
-      <footer className="lp-foot">
-        <div className="lp-wrap">© {new Date().getFullYear()} {PRODUCT_NAME} · Installation business management · Built for installers across Zimbabwe and beyond. · Photos: Unsplash &amp; Pexels</div>
-      </footer>
+      <PublicFooter />
     </div>
   );
 }

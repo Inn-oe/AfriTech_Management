@@ -7,6 +7,7 @@ import pytest
 _tmp = tempfile.mkdtemp()
 os.environ['DATABASE_URL'] = 'sqlite:///' + os.path.join(_tmp, 'test.db').replace(os.sep, '/')
 os.environ['FLASK_SECRET_KEY'] = 'test-secret-key-not-for-production'
+os.environ['SHOP_AUTO_SYNC'] = '0'      # the shop never reads real websites during tests
 
 from app import create_app  # noqa: E402
 

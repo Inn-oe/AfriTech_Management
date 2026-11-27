@@ -14,6 +14,8 @@ import DocumentView from './pages/DocumentView.jsx';
 import Payments from './pages/Payments.jsx';
 import Projects from './pages/Projects.jsx';
 import PlatformUsage from './pages/PlatformUsage.jsx';
+import Shop from './pages/Shop.jsx';
+import { ShopOrders, ShopProducts, ShopSettings } from './pages/ShopAdmin.jsx';
 import Reports from './pages/Reports.jsx';
 import Enquiries from './pages/Enquiries.jsx';
 import Training from './pages/Training.jsx';
@@ -52,6 +54,7 @@ export default function App() {
     return (
       <Routes>
         <Route path="/signup" element={<AuthPage mode="signup" />} />
+        <Route path="/shop" element={<Shop />} />
         <Route path="*" element={<AuthPage mode="login" />} />
       </Routes>
     );
@@ -62,6 +65,7 @@ export default function App() {
       <Routes>
         <Route path="login" element={<Navigate to="/" replace />} />
         <Route path="signup" element={<Navigate to="/" replace />} />
+        <Route path="shop" element={<Shop />} />
         <Route element={<Layout />}>
           <Route index element={<Home />} />
           <Route path="customers" element={<Customers />} />
@@ -82,6 +86,9 @@ export default function App() {
           <Route path="projects" element={<Projects />} />
           <Route path="reports" element={<Reports />} />
           <Route path="platform-usage" element={<PlatformUsage />} />
+          <Route path="shop-orders" element={<ShopOrders />} />
+          <Route path="shop-products" element={<ShopProducts />} />
+          <Route path="shop-settings" element={<ShopSettings />} />
           <Route path="whatsapp" element={<WhatsApp />} />
           <Route path="enquiries" element={<Enquiries />} />
           <Route path="training" element={<Training />} />

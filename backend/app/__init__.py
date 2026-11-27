@@ -22,6 +22,7 @@ from .platform_usage import platform_bp
 from .auth import auth_bp
 from .api import assign_missing_invoice_numbers, bp as api_bp
 from .whatsapp import bp as whatsapp_bp
+from . import shop
 from .models import Company, User
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s %(message)s')
@@ -148,6 +149,7 @@ def create_app():
     app.register_blueprint(api_bp)
     app.register_blueprint(whatsapp_bp)
     app.register_blueprint(platform_bp)
+    app.register_blueprint(shop.shop_bp)
 
     # Finish SQLAlchemy's model set-up now, on this one thread, before any other thread can run a query. Left to
     # the first query, a background thread (the Giebee import) and the first web request could start it at the
@@ -169,6 +171,13 @@ def create_app():
         except Exception:
             db_session.rollback()
             log.exception('Could not number invoices that had no number')
+        finally:
+            db_session.remove()
+        try:
+            shop.ensure_defaults()
+        except Exception:
+            db_session.rollback()
+            log.exception('Could not set up the online shop')
         finally:
             db_session.remove()
         giebee_import.start_in_background()   # no-op unless GIEBEE_IMPORT_SOURCE_URL is set
