@@ -3,9 +3,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { PRODUCT_NAME } from '../components/Brand.jsx';
-import { PublicFooter, PublicNav, TRADES, useCart } from '../components/PublicSite.jsx';
+import { OnlineBusinessNotice, PublicFooter, PublicNav, TRADES, useCart } from '../components/PublicSite.jsx';
 import { ProductCard } from './Shop.jsx';
 
+// ---- Audience 1: installation businesses (B2B). Exactly the eight tools the software has.
 const FEATURES = [
   { icon: 'fa-file-lines', title: 'Quotations', text: 'Professional quotes with your logo, turned into invoices in one click.' },
   { icon: 'fa-file-invoice-dollar', title: 'Invoicing', text: 'Automatic invoice numbers, PDFs and a record of every payment received.' },
@@ -16,33 +17,6 @@ const FEATURES = [
   { icon: 'fa-chart-column', title: 'Reports', text: 'Sales, income, expenses and profit in clear charts and reports.' },
   { icon: 'fa-truck-pickup', title: 'Fuel & mileage', text: 'Log fuel, mileage and journeys so travel costs are not forgotten.' },
 ];
-
-/** A few items from the equipment shop, with a link to the full shop. Hidden while the shop has no listed items. */
-function ShopTeaser() {
-  const cart = useCart();
-  const navigate = useNavigate();
-  const [items, setItems] = useState([]);
-  useEffect(() => {
-    api.get('/shop/products?limit=8').then((r) => setItems(r.products)).catch(() => setItems([]));
-  }, []);
-  if (!items.length) return null;
-  const add = (p) => { cart.add(p); navigate('/shop'); window.scrollTo({ top: 0 }); };
-  return (
-    <section id="shop" className="lp-section lp-shop">
-      <div className="lp-wrap">
-        <div className="lp-eyebrow dark">Equipment shop</div>
-        <h2 className="lp-h2">Buy solar, CCTV, borehole &amp; alarm equipment</h2>
-        <p className="lp-sub">Order online and we deliver. Pay by EcoCash, bank transfer or cash once we confirm your order.</p>
-        <div className="sp-grid">
-          {items.map((p) => <ProductCard key={p.id} p={p} onAdd={add} added={false} />)}
-        </div>
-        <div className="text-center mt-4">
-          <Link to="/shop" className="btn btn-primary btn-lg px-4"><i className="fas fa-store me-2" />Visit the shop</Link>
-        </div>
-      </div>
-    </section>
-  );
-}
 
 const BENEFITS = [
   { icon: 'fa-hand-holding-dollar', title: 'Get paid on time', text: 'Deposits, instalments and overdue alerts show exactly who owes you and since when, with no chasing through notebooks.' },
@@ -56,80 +30,70 @@ const BENEFITS = [
   { icon: 'fa-lock', title: 'Private and secure', text: 'Each company has its own separate workspace. Your customers and prices are never shared with anyone.' },
 ];
 
-const BEFORE = ['Quotes typed in Word or Excel', 'Payments tracked in a notebook', 'Stock counted by memory', 'WhatsApp messages lost in the chat', 'No idea which job made money'];
-const AFTER = ['Branded quotes and invoices in minutes', 'Instalments and overdue payments tracked', 'Live stock with out-of-stock warnings', 'Every enquiry captured as a lead', 'Profit and reports at a glance'];
-
-const STEPS = [
-  { title: 'Create your company account', text: 'Register your company in a couple of minutes.' },
-  { title: 'Add your logo, products and team', text: 'Load your price list and invite your staff with the right roles.' },
-  { title: 'Send your first quote', text: 'Quote, invoice, install and get paid, all tracked in one place.' },
+const COMPARE = [
+  { topic: 'Quotes', before: 'Typed in Word or Excel', after: 'Branded quotes and invoices in minutes' },
+  { topic: 'Payments', before: 'Tracked in a notebook', after: 'Instalments and overdue payments tracked' },
+  { topic: 'Stock', before: 'Counted by memory', after: 'Live stock with out-of-stock warnings' },
+  { topic: 'Enquiries', before: 'WhatsApp messages lost in the chat', after: 'Every enquiry captured as a lead' },
+  { topic: 'Profit', before: 'No idea which job made money', after: 'Profit and reports at a glance' },
 ];
 
-/** Inline illustration: sun and solar panel, CCTV camera, borehole pump and alarm shield. */
-function HeroArt() {
+// ---- The two paths through the page.
+const FOR_BUSINESSES = {
+  badge: 'For installation businesses (B2B)',
+  title: 'Run your whole installation business in one workspace',
+  points: ['Quotations and invoices with your own logo', 'Inventory, projects and site visits', 'Payment plans with overdue alerts', 'WhatsApp enquiries, reports, fuel and mileage'],
+};
+const FOR_BUYERS = {
+  badge: 'For property owners & buyers (direct clients)',
+  title: 'Buy equipment online. We deliver to you.',
+  points: ['Browse solar, CCTV, borehole and alarm hardware', 'Delivery arranged to your address', 'Pay by EcoCash, bank transfer or cash', 'Add a professional installer for a fee when you need one'],
+};
+
+const STEPS = [
+  { title: 'Choose your path', buyer: 'Browse the equipment shop and add what you need to your order.', business: 'Create your company account in a couple of minutes.' },
+  { title: 'Order or set up', buyer: 'Place your order and we arrange delivery to your address.', business: 'Add your logo, products and team with the right roles.' },
+  { title: 'Get it fitted, or get paid', buyer: 'Ask for a professional installer, for a fee, if you want one.', business: 'Quote, invoice, install and get paid, all tracked in one place.' },
+];
+
+/** Up to eight items from the equipment shop. Shows a friendly message when the shop has nothing listed yet. */
+function ShopStrip() {
+  const cart = useCart();
+  const navigate = useNavigate();
+  const [state, setState] = useState({ loading: true, items: [] });
+  useEffect(() => {
+    let live = true;
+    api.get('/shop/products?limit=8')
+      .then((r) => live && setState({ loading: false, items: r.products || [] }))
+      .catch(() => live && setState({ loading: false, items: [] }));
+    return () => { live = false; };
+  }, []);
+  const add = (p) => { cart.add(p); navigate('/shop'); window.scrollTo({ top: 0 }); };
   return (
-    <svg className="hero-art" viewBox="0 0 640 300" aria-hidden="true">
-      <defs>
-        <radialGradient id="ha-sun" cx="50%" cy="50%" r="50%">
-          <stop offset="0" stopColor="#ffd66b" /><stop offset="1" stopColor="#f4a922" />
-        </radialGradient>
-        <linearGradient id="ha-panel" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#2b6cb0" /><stop offset="1" stopColor="#163e73" />
-        </linearGradient>
-        <linearGradient id="ha-water" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#7fd3ff" /><stop offset="1" stopColor="#2aa1e0" />
-        </linearGradient>
-      </defs>
-      <circle cx="120" cy="110" r="80" fill="rgba(244,185,66,0.18)" />
-      <circle cx="120" cy="110" r="46" fill="url(#ha-sun)" />
-      {/* hills */}
-      <path d="M0 250 Q160 200 320 235 T640 225 V300 H0Z" fill="#2f8a4e" />
-      <path d="M0 270 Q200 235 380 262 T640 255 V300 H0Z" fill="#3fa35d" />
-      <path d="M0 292 Q320 268 640 288 V300 H0Z" fill="#f4b942" />
-      {/* solar panel */}
-      <g>
-        <rect x="130" y="196" width="8" height="50" fill="#9fb3c2" />
-        <rect x="232" y="186" width="8" height="58" fill="#9fb3c2" />
-        <polygon points="70,212 200,150 312,180 186,248" fill="#dfe7ee" />
-        <polygon points="78,211 201,155 303,181 186,242" fill="url(#ha-panel)" />
-        <g stroke="#9cc3ea" strokeWidth="1.4" opacity="0.8">
-          <line x1="119" y1="192" x2="220" y2="218" /><line x1="160" y1="173" x2="261" y2="199" />
-          <line x1="106" y1="217" x2="227" y2="162" /><line x1="140" y1="225" x2="257" y2="170" /><line x1="172" y1="234" x2="283" y2="176" />
-        </g>
-      </g>
-      {/* CCTV pole + camera */}
-      <g>
-        <rect x="352" y="96" width="9" height="150" fill="#b9c6d1" />
-        <rect x="340" y="100" width="30" height="12" rx="3" fill="#d7e0e7" />
-        <g transform="rotate(14 380 86)">
-          <rect x="330" y="68" width="88" height="34" rx="9" fill="#f4f7fa" />
-          <rect x="330" y="68" width="88" height="10" rx="5" fill="#dbe4ec" />
-          <circle cx="418" cy="85" r="15" fill="#1d2b38" />
-          <circle cx="418" cy="85" r="8" fill="#3a8fd6" />
-          <circle cx="421" cy="82" r="2.5" fill="#cfe9ff" />
-        </g>
-      </g>
-      {/* borehole pump + water */}
-      <g>
-        <rect x="430" y="196" width="36" height="52" rx="4" fill="#2c5f7c" />
-        <rect x="438" y="140" width="16" height="60" fill="#3d7ea3" />
-        <path d="M446 142 Q446 120 470 120 H500 V136 H472 Q462 136 462 146 Z" fill="#3d7ea3" />
-        <rect x="496" y="116" width="14" height="24" rx="3" fill="#2c5f7c" />
-        <path d="M503 140 Q500 190 520 240 L540 240 Q514 190 510 140 Z" fill="url(#ha-water)" />
-        <ellipse cx="530" cy="245" rx="34" ry="7" fill="#7fd3ff" opacity="0.7" />
-      </g>
-      {/* alarm shield */}
-      <g transform="translate(548 70)">
-        <path d="M40 0 L78 14 V48 Q78 82 40 100 Q2 82 2 48 V14 Z" fill="#1f6b4f" stroke="#f4b942" strokeWidth="5" />
-        <path d="M40 26 Q54 26 54 44 V58 L60 64 H20 L26 58 V44 Q26 26 40 26 Z" fill="#f4b942" />
-        <circle cx="40" cy="70" r="5" fill="#f4b942" />
-      </g>
-      {/* leaves */}
-      <g fill="#58c27a">
-        <path d="M20 250 Q30 215 52 205 Q46 235 20 250Z" /><path d="M600 236 Q606 205 630 196 Q626 226 600 236Z" />
-        <path d="M410 246 Q416 222 434 214 Q430 236 410 246Z" />
-      </g>
-    </svg>
+    <section id="shop" className="lp-section lp-shop">
+      <div className="lp-wrap">
+        <div className="lp-eyebrow dark">Equipment shop</div>
+        <h2 className="lp-h2">Buy solar, CCTV, borehole &amp; alarm equipment</h2>
+        <p className="lp-sub">For homes, farms and businesses. Order online and we deliver.</p>
+        <OnlineBusinessNotice className="lp-shop-note" />
+        {state.loading && <div className="text-center text-muted py-4"><span className="spinner-border spinner-border-sm me-2" />Loading products…</div>}
+        {!state.loading && !state.items.length && (
+          <div className="sp-empty">
+            <i className="fas fa-box-open" />
+            <p>New stock is being added. Please check again soon.</p>
+            <p className="small text-muted">Looking for something specific? Send an order with a note and we will source it for you.</p>
+          </div>
+        )}
+        {state.items.length > 0 && (
+          <div className="sp-grid">
+            {state.items.map((p) => <ProductCard key={p.id} p={p} onAdd={add} added={false} />)}
+          </div>
+        )}
+        <div className="text-center mt-4">
+          <Link to="/shop" className="btn btn-primary btn-lg px-4"><i className="fas fa-store me-2" />Visit the shop</Link>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -138,13 +102,11 @@ export default function AuthPage({ mode }) {
   const isSignup = mode === 'signup';
   const { login, signup } = useAuth();
   const navigate = useNavigate();
+  const cart = useCart();
   const [values, setValues] = useState({ company_name: '', name: '', phone: '', email: '', password: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [showPw, setShowPw] = useState(false);
-  const [trade, setTrade] = useState(null);
-
-  const active = TRADES.find((t) => t.key === trade);
 
   const field = (name, label, icon, props = {}) => (
     <div className="mb-3">
@@ -178,34 +140,41 @@ export default function AuthPage({ mode }) {
 
   return (
     <div className="lp">
-      <PublicNav />
+      <PublicNav cartCount={cart.count} onCart={() => navigate('/shop')} />
 
       {/* ---------- Hero + auth card ---------- */}
       <section className="lp-hero">
         <div className="lp-wrap lp-hero-grid">
           <div className="lp-hero-copy">
-            <div className="lp-eyebrow">For solar, CCTV, borehole &amp; alarm installers</div>
-            <h1>Built for installers.<span>Designed for growth.</span></h1>
+            <div className="lp-eyebrow">For installers · For every buyer</div>
+            <h1>Built for installers.<span>Open to every buyer.</span></h1>
             <p className="lead">
-              Manage quotes, stock, installations and payments for your{' '}
-              <strong>{active ? active.noun : 'installation'}</strong> business in one workspace.
+              Installation businesses run quotes, stock, jobs and payments in one workspace. Homes, farms and
+              businesses buy <strong>solar, CCTV, borehole and alarm equipment</strong> online, delivered to their address.
             </p>
-            <div className="lp-chips" role="group" aria-label="Choose your trade">
+            <div className="lp-chips" role="group" aria-label="Shop by trade">
               {TRADES.map((t) => (
-                <button key={t.key} type="button" className={`lp-chip${trade === t.key ? ' active' : ''}`}
-                  aria-pressed={trade === t.key} onClick={() => setTrade(trade === t.key ? null : t.key)}>
+                <Link key={t.key} to={`/shop?trade=${t.key}`} className="lp-chip" aria-label={`Shop ${t.label} equipment`}>
                   <i className={`fas ${t.icon}`} />{t.label}
-                </button>
+                </Link>
               ))}
             </div>
             <div className="lp-hero-actions">
-              <Link to="/shop" className="btn lp-cta"><i className="fas fa-store me-2" />Shop equipment</Link>
+              <Link to="/shop" className="btn lp-cta btn-lg px-4"><i className="fas fa-store me-2" />Shop equipment</Link>
+              <button type="button" className="btn btn-outline-light btn-lg px-4" onClick={() => go('/signup')}>
+                <i className="fas fa-screwdriver-wrench me-2" />Installer account
+              </button>
             </div>
-            <HeroArt />
+            <div className="lp-hero-strip" aria-hidden="true">
+              {TRADES.map((t) => (
+                <figure key={t.key}><img src={t.photo} alt="" loading="lazy" width="800" height="500" /><figcaption>{t.label}</figcaption></figure>
+              ))}
+            </div>
           </div>
 
           <div className="card lp-auth">
             <div className="card-body p-4">
+              <div className="lp-auth-for"><i className="fas fa-screwdriver-wrench me-2" />Installer and business sign-in</div>
               <div className="lp-tabs">
                 <Link to="/login" className={!isSignup ? 'on' : ''}>Sign in</Link>
                 <Link to="/signup" className={isSignup ? 'on' : ''}>Create an account</Link>
@@ -253,19 +222,62 @@ export default function AuthPage({ mode }) {
               <div className="text-center text-muted mt-2" style={{ fontSize: '0.75rem' }}>
                 <i className="fas fa-lock me-1" />Your company data stays private and secure
               </div>
+              <div className="lp-auth-buyer">
+                Buying equipment? <Link to="/shop" className="fw-semibold">No account needed, visit the shop <i className="fas fa-arrow-right ms-1" /></Link>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ---------- Industries ---------- */}
-      <section id="industries" className="lp-section">
+      {/* ---------- Who it is for ---------- */}
+      <section id="who" className="lp-section">
         <div className="lp-wrap">
-          <h2 className="lp-h2">A complete business system for installation companies</h2>
-          <p className="lp-sub">Run your solar, security, water or alarm business with the tools you need to win jobs, manage work, get paid and grow.</p>
+          <div className="lp-eyebrow dark">Who it&apos;s for</div>
+          <h2 className="lp-h2">One platform, two ways to use it</h2>
+          <p className="lp-sub">Whether you install equipment for a living or need equipment for your home, farm or business, start on the path that fits you.</p>
+          <div className="lp-who">
+            <article className="lp-who-card tone-teal">
+              <div className="lp-who-photo"><img src="/landing/who-installers.jpg" alt="Installation team fitting solar panels on a roof" loading="lazy" width="1000" height="650" /></div>
+              <div className="lp-who-body">
+                <span className="lp-who-badge"><i className="fas fa-screwdriver-wrench" />{FOR_BUSINESSES.badge}</span>
+                <h3>{FOR_BUSINESSES.title}</h3>
+                <ul>{FOR_BUSINESSES.points.map((x) => <li key={x}>{x}</li>)}</ul>
+                <div className="lp-who-actions">
+                  <button type="button" className="btn btn-primary px-4" onClick={() => go('/signup')}>Create business account</button>
+                  <button type="button" className="btn btn-outline-secondary px-4" onClick={() => go('/login')}>Sign in</button>
+                </div>
+              </div>
+            </article>
+            <article className="lp-who-card tone-amber">
+              <div className="lp-who-photo">
+                <img src="/landing/who-buyers.jpg" alt="Home with solar panels on the roof" loading="lazy" width="1000" height="650" />
+                <div className="lp-who-minis" aria-hidden="true">
+                  <img src="/landing/buyer-water.jpg" alt="" loading="lazy" width="600" height="480" />
+                  <img src="/landing/buyer-cctv.jpg" alt="" loading="lazy" width="600" height="480" />
+                </div>
+              </div>
+              <div className="lp-who-body">
+                <span className="lp-who-badge"><i className="fas fa-house-signal" />{FOR_BUYERS.badge}</span>
+                <h3>{FOR_BUYERS.title}</h3>
+                <ul>{FOR_BUYERS.points.map((x) => <li key={x}>{x}</li>)}</ul>
+                <div className="lp-who-actions">
+                  <Link to="/shop" className="btn lp-cta px-4"><i className="fas fa-store me-2" />Shop equipment</Link>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      {/* ---------- Industries ---------- */}
+      <section id="industries" className="lp-section lp-alt">
+        <div className="lp-wrap">
+          <h2 className="lp-h2">Four trades, one platform</h2>
+          <p className="lp-sub">Installers run their solar, security, water or alarm business here. Buyers shop the same four trades.</p>
           <div className="lp-grid lp-grid-4">
             {TRADES.map((t) => (
-              <div key={t.key} className={`lp-trade has-photo tone-${t.tone}${trade === t.key ? ' active' : ''}`}>
+              <div key={t.key} className={`lp-trade has-photo tone-${t.tone}`}>
                 <div className="lp-photo">
                   <img src={t.photo} alt={t.photoAlt} loading="lazy" width="800" height="500" />
                   <span className="lp-ico"><i className={`fas ${t.icon}`} /></span>
@@ -273,6 +285,10 @@ export default function AuthPage({ mode }) {
                 <div className="lp-trade-body">
                   <h3>{t.title}</h3>
                   <p>{t.text}</p>
+                  <div className="lp-trade-links">
+                    <Link to={`/shop?trade=${t.key}`}><i className="fas fa-store me-1" />Shop {t.label}</Link>
+                    <Link to="/signup"><i className="fas fa-briefcase me-1" />Business account</Link>
+                  </div>
                 </div>
               </div>
             ))}
@@ -280,11 +296,12 @@ export default function AuthPage({ mode }) {
         </div>
       </section>
 
-      <ShopTeaser />
+      <ShopStrip />
 
       {/* ---------- Features ---------- */}
       <section id="features" className="lp-section lp-alt">
         <div className="lp-wrap">
+          <div className="lp-eyebrow dark">For installation businesses</div>
           <h2 className="lp-h2">Everything you need to run your installation business</h2>
           <p className="lp-sub">One login replaces the spreadsheets, notebooks and scattered WhatsApp chats.</p>
           <div className="lp-grid lp-grid-4">
@@ -317,15 +334,25 @@ export default function AuthPage({ mode }) {
             ))}
           </div>
 
-          <div className="lp-compare">
-            <div className="lp-col before">
-              <h3><i className="fas fa-circle-xmark" />Without {PRODUCT_NAME}</h3>
-              <ul>{BEFORE.map((x) => <li key={x}>{x}</li>)}</ul>
-            </div>
-            <div className="lp-col after">
-              <h3><i className="fas fa-circle-check" />With {PRODUCT_NAME}</h3>
-              <ul>{AFTER.map((x) => <li key={x}>{x}</li>)}</ul>
-            </div>
+          <div className="lp-table-wrap">
+            <table className="lp-table">
+              <thead>
+                <tr>
+                  <th scope="col"><span className="visually-hidden">Area</span></th>
+                  <th scope="col" className="before"><i className="fas fa-circle-xmark me-2" />Without {PRODUCT_NAME}</th>
+                  <th scope="col" className="after"><i className="fas fa-circle-check me-2" />With {PRODUCT_NAME}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {COMPARE.map((r) => (
+                  <tr key={r.topic}>
+                    <th scope="row">{r.topic}</th>
+                    <td className="before">{r.before}</td>
+                    <td className="after">{r.after}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </section>
@@ -334,13 +361,14 @@ export default function AuthPage({ mode }) {
       <section id="how" className="lp-section lp-alt">
         <div className="lp-wrap">
           <h2 className="lp-h2">Up and running today</h2>
-          <p className="lp-sub">No installation, no training course. If you can use WhatsApp, you can use {PRODUCT_NAME}.</p>
+          <p className="lp-sub">Order equipment in minutes, or set up your installation business. No installation, no training course. If you can use WhatsApp, you can use {PRODUCT_NAME}.</p>
           <div className="lp-grid lp-grid-3">
             {STEPS.map((s, i) => (
               <div key={s.title} className="lp-step">
                 <span className="lp-num">{i + 1}</span>
                 <h3>{s.title}</h3>
-                <p>{s.text}</p>
+                <p className="lp-step-line"><b><i className="fas fa-house-signal" />Buying equipment</b>{s.buyer}</p>
+                <p className="lp-step-line"><b><i className="fas fa-screwdriver-wrench" />Installation business</b>{s.business}</p>
               </div>
             ))}
           </div>
@@ -350,11 +378,12 @@ export default function AuthPage({ mode }) {
       {/* ---------- Final call to action ---------- */}
       <section className="lp-final">
         <div className="lp-wrap text-center">
-          <h2>Ready to run your installation business properly?</h2>
-          <p>One place for every quote, job, stock item and payment, for solar, CCTV, borehole and alarm companies.</p>
+          <h2>Buy equipment, or run your installation business properly.</h2>
+          <p>One place for every order, quote, job, stock item and payment, for solar, CCTV, borehole and alarm work.</p>
           <div className="d-flex gap-2 justify-content-center flex-wrap">
-            <button type="button" className="btn lp-cta btn-lg px-4" onClick={() => go('/signup')}>Create your account</button>
-            <button type="button" className="btn btn-outline-light btn-lg px-4" onClick={() => go('/login')}>Sign in</button>
+            <Link to="/shop" className="btn lp-cta btn-lg px-4"><i className="fas fa-store me-2" />Shop equipment</Link>
+            <button type="button" className="btn btn-outline-light btn-lg px-4" onClick={() => go('/signup')}>Create your account</button>
+            <button type="button" className="btn btn-link text-white btn-lg" onClick={() => go('/login')}>Sign in</button>
           </div>
         </div>
       </section>
