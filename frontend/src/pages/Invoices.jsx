@@ -89,7 +89,7 @@ export default function Invoices() {
                         <div className="btn-group">
                           <IconButton icon="fa-eye" title="View" onClick={() => navigate(`/invoices/${inv.id}`)} />
                           <IconButton icon="fa-file-pdf" title="Download PDF" variant="outline-danger" href={pdfUrl(`/invoices/${inv.id}/pdf`)} />
-                          <IconButton icon="fa-pen" title="Edit" variant="outline-primary" onClick={() => navigate(`/invoices/${inv.id}/edit`)} />
+                          <IconButton icon="fa-pen" title="Open to edit the price or record a payment" variant="outline-primary" onClick={() => navigate(`/invoices/${inv.id}`)} />
                           <IconButton icon="fa-trash" title="Delete" variant="outline-danger" onClick={() => remove(inv)} />
                         </div>
                       </td>
