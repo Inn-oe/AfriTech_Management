@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import {
-  PartnerBadge, ProductImage, PublicFooter, PublicNav, TRADES, usd, useCart,
+  ProductImage, PublicFooter, PublicNav, TRADES, usd, useCart,
 } from '../components/PublicSite.jsx';
 
 function Checkout({ cart, onClose, onDone }) {
@@ -200,7 +200,6 @@ export default function Shop() {
             <span><i className="fas fa-money-bill-wave" />Pay by EcoCash, transfer or cash</span>
             <span><i className="fas fa-screwdriver-wrench" />Installation on request</span>
           </div>
-          <div className="mt-3"><PartnerBadge /></div>
         </div>
       </section>
 

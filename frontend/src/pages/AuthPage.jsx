@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { PRODUCT_NAME } from '../components/Brand.jsx';
-import { PartnerBadge, PublicFooter, PublicNav, TRADES, useCart } from '../components/PublicSite.jsx';
+import { PublicFooter, PublicNav, TRADES, useCart } from '../components/PublicSite.jsx';
 import { ProductCard } from './Shop.jsx';
 
 const FEATURES = [
@@ -200,7 +200,6 @@ export default function AuthPage({ mode }) {
             </div>
             <div className="lp-hero-actions">
               <Link to="/shop" className="btn lp-cta"><i className="fas fa-store me-2" />Shop equipment</Link>
-              <PartnerBadge />
             </div>
             <HeroArt />
           </div>

@@ -369,10 +369,6 @@ h1, h2, h3, h4, h5, h6 { letter-spacing: -0.02em; }
 }
 
 /* ---------- Public site: partner badge, shop ---------- */
-.lp-partner { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.82rem; color: rgba(255, 255, 255, 0.85); background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 999px; padding: 0.35rem 0.85rem; }
-.lp-partner i { color: var(--amber); }
-.lp-partner strong { color: #fff; letter-spacing: 0.01em; }
-.lp-partner.dark { background: rgba(255, 255, 255, 0.06); }
 .lp-hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; margin: 1rem 0 0.4rem; }
 .lp-shop-link { color: var(--amber) !important; font-weight: 700 !important; }
 .lp-cart-btn { position: relative; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3); color: #fff; width: 40px; height: 36px; border-radius: 10px; }

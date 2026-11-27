@@ -1,9 +1,7 @@
-// Shared pieces of the public website (landing page and shop): top bar, footer, partner badge, trades and cart.
+// Shared pieces of the public website (landing page and shop): top bar, footer, trades and cart.
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Brand, PRODUCT_NAME } from './Brand.jsx';
-
-export const PARTNER = 'ZimLayBye';
 
 export const TRADES = [
   { key: 'solar', label: 'Solar', icon: 'fa-solar-panel', tone: 'amber', noun: 'solar',
@@ -19,14 +17,6 @@ export const TRADES = [
     title: 'Alarms & access control', text: 'Manage alarm, intruder, electric-fence and access-control jobs from quote to handover.',
     photo: '/landing/alarms.jpg', photoAlt: 'Technician in a hard hat fitting a security device to a wall' },
 ];
-
-export function PartnerBadge({ dark = false }) {
-  return (
-    <span className={`lp-partner${dark ? ' dark' : ''}`}>
-      <i className="fas fa-handshake" />In partnership with <strong>{PARTNER}</strong>
-    </span>
-  );
-}
 
 export function PublicNav({ cartCount = 0, onCart }) {
   const navigate = useNavigate();
@@ -64,8 +54,7 @@ export function PublicFooter() {
   return (
     <footer className="lp-foot">
       <div className="lp-wrap">
-        <PartnerBadge dark />
-        <div className="mt-2">
+        <div>
           © {new Date().getFullYear()} {PRODUCT_NAME} · Installation business management and equipment shop ·
           Built for installers across Zimbabwe and beyond. · Photos: Unsplash &amp; Pexels
         </div>
