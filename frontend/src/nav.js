@@ -8,7 +8,6 @@ export const SECTIONS = [
     tabs: [
       { to: '/enquiries', label: 'Enquiries', module: 'customers', feature: 'whatsapp' },
       { to: '/whatsapp', label: 'Potential clients', module: 'customers', feature: 'whatsapp' },
-      { to: '/training', label: 'Train the bot', module: 'customers', feature: 'whatsapp' },
     ],
   },
   {
