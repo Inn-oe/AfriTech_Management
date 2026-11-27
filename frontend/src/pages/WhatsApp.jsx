@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { useToast } from '../components/Toast.jsx';
@@ -87,6 +87,57 @@ function ReplyBox({ c, who, onSent }) {
   );
 }
 
+const PAGE_SIZE = 20;
+
+const dayLabel = (iso) => {
+  const d = new Date(iso);
+  const now = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === now.toDateString()) return 'Today';
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+/** The chat: opens at the newest message, shows the latest 20 and loads 20 earlier ones on request. */
+function Conversation({ messages }) {
+  const [visible, setVisible] = useState(PAGE_SIZE);
+  const box = useRef(null);
+  const total = messages.length;
+  const shown = messages.slice(Math.max(0, total - visible));
+  const earlier = total - shown.length;
+
+  // Jump to the newest message when the chat opens or a new message arrives (not when older ones are revealed).
+  useEffect(() => { if (box.current) box.current.scrollTop = box.current.scrollHeight; }, [total]);
+
+  return (
+    <div ref={box} className="border rounded-3 p-2" style={{ maxHeight: 'min(60vh, 520px)', overflowY: 'auto', background: '#f8fafb' }}>
+      {total === 0 && <div className="text-muted small p-2">No messages stored.</div>}
+      {earlier > 0 && (
+        <div className="text-center my-2">
+          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setVisible((v) => v + PAGE_SIZE)}>
+            <i className="fas fa-clock-rotate-left me-1" />Show {Math.min(PAGE_SIZE, earlier)} earlier messages ({earlier} not shown)
+          </button>
+        </div>
+      )}
+      {shown.map((m, i) => {
+        const newDay = i === 0 || new Date(shown[i - 1].created).toDateString() !== new Date(m.created).toDateString();
+        return (
+          <Fragment key={`${m.created}-${i}`}>
+            {newDay && <div className="text-center my-2"><span className="badge text-bg-light border text-muted fw-normal">{dayLabel(m.created)}</span></div>}
+            <div className={`d-flex ${m.direction === 'in' ? '' : 'justify-content-end'}`}>
+              <div className="my-1 px-3 py-2 rounded-3 small" style={{ maxWidth: '82%', whiteSpace: 'pre-wrap', background: m.direction === 'in' ? '#e9edf1' : m.sender === 'staff' ? '#dfeefb' : '#dcf3e8' }}>
+                <div className="text-muted" style={{ fontSize: '0.68rem' }}>{m.direction === 'in' ? 'Client' : m.sender === 'staff' ? 'Staff' : 'Bot'} · {dateTime(m.created)}</div>
+                {m.text}
+              </div>
+            </div>
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Detail({ who, stages, canEdit, onSaved }) {
   const notify = useToast();
   const { data, loading, error, reload } = useApi(`/whatsapp/clients/${encodeURIComponent(who)}`);
@@ -136,7 +187,12 @@ export function Detail({ who, stages, canEdit, onSaved }) {
 
       <div className="note-bar mt-3"><i className="fas fa-bolt" /><span><b>What to do next:</b> {c.next_action}</span></div>
 
-      <div className="row g-3 mt-1">
+      <h3 className="h6 mt-3">Conversation <span className="text-muted fw-normal small">({data.messages.length} message{data.messages.length === 1 ? '' : 's'})</span></h3>
+      <Conversation messages={data.messages} />
+      {canEdit && <ReplyBox c={c} who={who} onSent={() => { reload(); onSaved(); }} />}
+
+
+      <div className="row g-3 mt-3">
         <div className="col-md-6">
           <div className="fw-semibold small mb-1">Why this rating</div>
           {c.reasons.length === 0 ? <div className="text-muted small">No buying signals yet.</div> : (
@@ -183,45 +239,44 @@ export function Detail({ who, stages, canEdit, onSaved }) {
         </div>
       </div>
 
-      <h3 className="h6 mt-4">Conversation</h3>
-      <div className="border rounded-3 p-2" style={{ maxHeight: 340, overflowY: 'auto', background: '#f8fafb' }}>
-        {data.messages.length === 0 && <div className="text-muted small p-2">No messages stored.</div>}
-        {data.messages.map((m, i) => (
-          <div key={i} className={`d-flex ${m.direction === 'in' ? '' : 'justify-content-end'}`}>
-            <div className="my-1 px-3 py-2 rounded-3 small" style={{ maxWidth: '82%', whiteSpace: 'pre-wrap', background: m.direction === 'in' ? '#e9edf1' : m.sender === 'staff' ? '#dfeefb' : '#dcf3e8' }}>
-              <div className="text-muted" style={{ fontSize: '0.68rem' }}>{m.direction === 'in' ? 'Client' : m.sender === 'staff' ? 'Staff' : 'Bot'} · {dateTime(m.created)}</div>
-              {m.text}
-            </div>
-          </div>
-        ))}
-      </div>
-      {canEdit && <ReplyBox c={c} who={who} onSent={() => { reload(); onSaved(); }} />}
     </>
   );
 }
+
+const SORTS = [['attention', 'Needs attention first'], ['newest', 'Newest message first'], ['name', 'Name A to Z']];
 
 /** People who chatted with the WhatsApp bot, rated hot / warm / cold with advice on what to do next. */
 export default function WhatsApp() {
   const { can } = useAuth();
   const { data, loading, error, reload } = useApi('/whatsapp/clients');
   const [search, setSearch] = useState('');
-  const [temp, setTemp] = useState('');
+  const [tab, setTab] = useState('');            // '' = everyone, hot / warm / cold, or 'due' = follow-ups due
   const [stage, setStage] = useState('');
-  const [dueOnly, setDueOnly] = useState(false);
+  const [sort, setSort] = useState('attention');
+  const [shown, setShown] = useState(PAGE_SIZE);
   const [open, setOpen] = useState(null);
 
   const clients = data?.clients || [];
+  const live = clients.filter((c) => !['won', 'lost'].includes(c.stage));
+  const count = (t) => live.filter((c) => c.temperature === t).length;
+  const dueCount = clients.filter((c) => c.follow_up_due).length;
+
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return clients.filter((c) => (!temp || c.temperature === temp) && (!stage || c.stage === stage) && (!dueOnly || c.follow_up_due)
+    const list = clients.filter((c) => (!tab || (tab === 'due' ? c.follow_up_due : c.temperature === tab)) && (!stage || c.stage === stage)
       && (!q || [c.name, c.who, c.signals.need, c.signals.location, c.signals.recommended, c.notes].some((v) => String(v || '').toLowerCase().includes(q))));
-  }, [clients, search, temp, stage, dueOnly]);
+    if (sort === 'newest') return [...list].sort((a, b) => String(b.last_inbound || '').localeCompare(String(a.last_inbound || '')));
+    if (sort === 'name') return [...list].sort((a, b) => label(a).localeCompare(label(b)));
+    return list;                                  // the server already puts follow-ups due and the hottest first
+  }, [clients, search, tab, stage, sort]);
+
+  useEffect(() => setShown(PAGE_SIZE), [search, tab, stage, sort]);
 
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
 
-  const live = clients.filter((c) => !['won', 'lost'].includes(c.stage));
-  const count = (t) => live.filter((c) => c.temperature === t).length;
+  const tabs = [['', 'All', clients.length], ['hot', 'Hot', count('hot')], ['warm', 'Warm', count('warm')], ['cold', 'Cold', count('cold')], ['due', 'Follow-ups due', dueCount]];
+  const visibleRows = rows.slice(0, shown);
 
   return (
     <>
@@ -233,51 +288,67 @@ export default function WhatsApp() {
         <div className="col-sm-6 col-xl-3"><StatCard label="People chatted" value={clients.length} icon="fa-comments" /></div>
         <div className="col-sm-6 col-xl-3"><StatCard label="Hot leads" value={count('hot')} icon="fa-fire" color="danger" hint={count('hot') ? 'Contact them first' : undefined} tone="bad" /></div>
         <div className="col-sm-6 col-xl-3"><StatCard label="Warm leads" value={count('warm')} icon="fa-sun" color="warning" /></div>
-        <div className="col-sm-6 col-xl-3"><StatCard label="Follow-ups due" value={clients.filter((c) => c.follow_up_due).length} icon="fa-bell" color="info" /></div>
+        <div className="col-sm-6 col-xl-3"><StatCard label="Follow-ups due" value={dueCount} icon="fa-bell" color="info" /></div>
       </div>
 
       {data && !data.connected && (
         <div className="alert alert-info">No chats have been stored yet. Once someone messages your WhatsApp number, they appear here.</div>
       )}
 
-      <div className="d-flex flex-wrap gap-2 mb-3">
-        <input className="form-control" style={{ maxWidth: 280 }} placeholder="Search name, number, need…" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search" />
-        <select className="form-select w-auto" value={temp} onChange={(e) => setTemp(e.target.value)} aria-label="Temperature">
-          <option value="">All temperatures</option><option value="hot">Hot</option><option value="warm">Warm</option><option value="cold">Cold</option>
-        </select>
-        <select className="form-select w-auto" value={stage} onChange={(e) => setStage(e.target.value)} aria-label="Stage">
-          <option value="">All stages</option>{(data?.stages || []).map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <div className="form-check d-flex align-items-center gap-2 ms-1">
-          <input className="form-check-input mt-0" type="checkbox" id="due" checked={dueOnly} onChange={(e) => setDueOnly(e.target.checked)} />
-          <label className="form-check-label small" htmlFor="due">Follow-ups due</label>
-        </div>
-      </div>
-
       <div className="row g-3">
-        <div className="col-lg-5">
-          <div className="card"><div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
-            {rows.length === 0 && <div className="text-muted text-center py-5 small">{clients.length ? 'No clients match the filters.' : 'No one has chatted yet.'}</div>}
-            {rows.map((c) => (
-              <button key={c.who} type="button" onClick={() => setOpen(c.who)}
-                className={`d-block w-100 text-start border-0 border-bottom p-3 ${open === c.who ? 'bg-light' : 'bg-white'}`}>
-                <div className="d-flex justify-content-between align-items-center gap-2">
-                  <span className="d-flex align-items-center gap-2 min-w-0">
-                    <span className="avatar soft" style={{ width: 32, height: 32, fontSize: '0.7rem' }}>{initials(label(c))}</span>
-                    <b className="text-truncate">{label(c)}</b>
-                  </span>
-                  <Temp t={c.temperature} />
+        <div className={`col-lg-5 ${open ? 'd-none d-lg-block' : ''}`}>
+          <div className="card">
+            <div className="card-body pb-2">
+              <div className="d-flex flex-wrap gap-1 mb-2" role="tablist" aria-label="Show">
+                {tabs.map(([key, name, n]) => (
+                  <button key={key || 'all'} type="button" role="tab" aria-selected={tab === key}
+                    className={`btn btn-sm ${tab === key ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setTab(key)}>
+                    {name} <span className={`badge ${tab === key ? 'text-bg-light' : 'text-bg-secondary'} ms-1`}>{n}</span>
+                  </button>
+                ))}
+              </div>
+              <input className="form-control mb-2" placeholder="Search name, number, need…" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search" />
+              <div className="d-flex gap-2">
+                <select className="form-select form-select-sm" value={stage} onChange={(e) => setStage(e.target.value)} aria-label="Stage">
+                  <option value="">All stages</option>{(data?.stages || []).map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <select className="form-select form-select-sm" value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort">
+                  {SORTS.map(([k, name]) => <option key={k} value={k}>{name}</option>)}
+                </select>
+              </div>
+              <div className="small text-muted mt-2">{rows.length ? `Showing ${visibleRows.length} of ${rows.length}` : ''}</div>
+            </div>
+            <div style={{ maxHeight: '62vh', overflowY: 'auto', borderTop: '1px solid var(--line)' }}>
+              {rows.length === 0 && <div className="text-muted text-center py-5 small">{clients.length ? 'No clients match the filters.' : 'No one has chatted yet.'}</div>}
+              {visibleRows.map((c) => (
+                <button key={c.who} type="button" onClick={() => setOpen(c.who)}
+                  className={`d-block w-100 text-start border-0 border-bottom p-3 ${open === c.who ? 'bg-light' : 'bg-white'}`}>
+                  <div className="d-flex justify-content-between align-items-center gap-2">
+                    <span className="d-flex align-items-center gap-2 min-w-0">
+                      <span className="avatar soft" style={{ width: 32, height: 32, fontSize: '0.7rem' }}>{initials(label(c))}</span>
+                      <b className="text-truncate">{label(c)}</b>
+                    </span>
+                    <Temp t={c.temperature} />
+                  </div>
+                  <div className="small text-muted mt-1">{c.stage} · score {c.score} · last message {ago(c.last_inbound)}{c.bot_paused ? ' · bot paused' : ''}</div>
+                  <div className="progress mt-1"><div className="progress-bar" style={{ width: `${c.score}%` }} /></div>
+                  {c.follow_up_due && <div className="small text-danger fw-semibold mt-1">Follow-up due {c.follow_up}</div>}
+                  <div className="small mt-1">{c.next_action.split(' Note:')[0]}</div>
+                </button>
+              ))}
+              {rows.length > shown && (
+                <div className="p-3 text-center">
+                  <button type="button" className="btn btn-outline-primary btn-sm" onClick={() => setShown((n) => n + PAGE_SIZE)}>
+                    Show {Math.min(PAGE_SIZE, rows.length - shown)} more ({rows.length - shown} not shown)
+                  </button>
                 </div>
-                <div className="small text-muted mt-1">{c.stage} · score {c.score} · last message {ago(c.last_inbound)}{c.bot_paused ? ' · bot paused' : ''}</div>
-                <div className="progress mt-1"><div className="progress-bar" style={{ width: `${c.score}%` }} /></div>
-                {c.follow_up_due && <div className="small text-danger fw-semibold mt-1">Follow-up due {c.follow_up}</div>}
-                <div className="small mt-1">{c.next_action.split(' Note:')[0]}</div>
-              </button>
-            ))}
-          </div></div>
+              )}
+            </div>
+          </div>
         </div>
-        <div className="col-lg-7">
+        <div className={`col-lg-7 ${open ? '' : 'd-none d-lg-block'}`}>
           <div className="card"><div className="card-body">
+            {open && <button type="button" className="btn btn-sm btn-light mb-3 d-lg-none" onClick={() => setOpen(null)}><i className="fas fa-arrow-left me-2" />All clients</button>}
             {open ? <Detail key={open} who={open} stages={data?.stages || []} canEdit={can('customers', 'write')} onSaved={reload} />
               : <div className="text-muted text-center py-5">Select a client to see why they are rated, what to do next, and their chat.</div>}
           </div></div>
