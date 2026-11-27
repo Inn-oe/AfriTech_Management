@@ -95,6 +95,13 @@ def ensure_schema():
     additions = {
         'payments': [('payer_name', 'VARCHAR(100)')],
         'invoice_items': [('cost_pending', 'BOOLEAN DEFAULT FALSE')],
+        'shop_products': [('supplier_company', 'VARCHAR(100)'), ('install_fee', 'FLOAT'),
+                          ('image', str(LargeBinary().compile(dialect=engine.dialect)))],
+        'shop_orders': [('payment_option', "VARCHAR(10) DEFAULT 'COD'"), ('deposit_percent', 'INTEGER DEFAULT 0'),
+                        ('deposit_due', 'FLOAT DEFAULT 0'), ('paid_amount', 'FLOAT DEFAULT 0'),
+                        ('payment_method', 'VARCHAR(20)'), ('payment_reference', 'VARCHAR(100)'),
+                        ('installer', 'BOOLEAN DEFAULT FALSE'), ('installation_fee', 'FLOAT DEFAULT 0')],
+        'shop_order_items': [('supplier_company', 'VARCHAR(100)')],
         'invoices': [('quotation_id', 'INTEGER REFERENCES quotations(id)'), ('plan_base_paid', 'FLOAT')],
         'companies': [('logo', str(LargeBinary().compile(dialect=engine.dialect))),
                       ('finance_defaults_added', 'BOOLEAN DEFAULT FALSE')],

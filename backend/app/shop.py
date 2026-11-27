@@ -8,6 +8,7 @@ yet); the operator contacts them, takes the payment and delivers.
 Public (no login):  GET /api/shop/info, GET /api/shop/products, POST /api/shop/orders
 Operator only:      /api/shop/admin/...   (emails in PLATFORM_ADMIN_EMAILS)
 """
+import base64
 import html
 import json
 import logging
@@ -21,25 +22,30 @@ import urllib.request
 import urllib.robotparser
 from datetime import datetime, timedelta
 
-from flask import Blueprint, g, jsonify, request
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, or_
-from sqlalchemy.orm import relationship
+from flask import Blueprint, Response, g, jsonify, request
+from sqlalchemy import (Boolean, Column, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint,
+                        or_)
+from sqlalchemy.orm import deferred, relationship
 
-from .auth import PUBLIC_ENDPOINTS, ApiError, _client_ip, _limited, is_operator, protect
+from .auth import PUBLIC_ENDPOINTS, ApiError, _client_ip, _limited, _logo_mime, is_operator, protect
 from .database import Base, db_session
 
 log = logging.getLogger('erp.shop')
 shop_bp = Blueprint('shop', __name__, url_prefix='/api/shop')
 
 USER_AGENT = 'AfritechCatalogBot/1.0 (product price reader; respects robots.txt)'
-TRADES = ('solar', 'cctv', 'borehole', 'alarms')
+TRADES = ('solar', 'cctv', 'borehole', 'alarms', 'razorwire')
+PAY_OPTIONS = ('COD', 'ONLINE')            # cash on delivery, or pay online now (a deposit of at least the minimum, up to all)
+ONLINE_METHODS = ('ECOCASH', 'TRANSFER')
+MAX_IMAGE_BYTES = 1_200_000
 PRODUCT_STATUSES = ('pending', 'listed', 'hidden')
 ORDER_STATUSES = ('NEW', 'CONTACTED', 'PAID', 'DELIVERED', 'CANCELLED')
 SYNC_EVERY = timedelta(hours=24)
 MAX_PAGES = 30           # 100 products per page
 PAGE_PAUSE = 1.0         # seconds between feed pages, to be gentle on the shop's server
 
-DEFAULT_SETTINGS = {'markup_percent': '15', 'markup_flat': '0', 'whatsapp_number': '', 'last_auto_sync': ''}
+DEFAULT_SETTINGS = {'markup_percent': '15', 'markup_flat': '0', 'whatsapp_number': '', 'last_auto_sync': '',
+                    'min_deposit_percent': '70', 'install_fee_default': '0', 'payment_instructions': ''}
 DEFAULT_SOURCES = [{'name': 'TV Sales & Home', 'base_url': 'https://www.tvsales.co.zw', 'categories': 'solar'}]
 
 
@@ -79,6 +85,9 @@ class ShopProduct(Base):
     image_url = Column(String(500))
     source_price = Column(Float, default=0)          # the shop's price (USD)
     price_override = Column(Float)                   # operator's own selling price, if set
+    supplier_company = Column(String(100))           # the company providing this product, shown to customers
+    install_fee = Column(Float)                      # fee for an installer for this item; empty = the shop's default fee
+    image = deferred(Column(LargeBinary))            # a photo uploaded by the operator (image_url then points at it)
     in_stock = Column(Boolean, default=True)
     status = Column(String(20), default='pending')
     created = Column(DateTime, default=datetime.utcnow)
@@ -97,7 +106,15 @@ class ShopOrder(Base):
     notes = Column(String(1000))
     status = Column(String(20), default='NEW')
     admin_note = Column(String(1000))
-    total = Column(Float, default=0)
+    total = Column(Float, default=0)                 # goods plus the installer fee
+    payment_option = Column(String(10), default='COD')   # COD = pay on delivery; ONLINE = pay a deposit (or all) now
+    deposit_percent = Column(Integer, default=0)
+    deposit_due = Column(Float, default=0)           # what the customer promised to pay now
+    paid_amount = Column(Float, default=0)           # what we have received so far (recorded by the operator)
+    payment_method = Column(String(20))              # ECOCASH or TRANSFER, for online payments
+    payment_reference = Column(String(100))          # the customer's EcoCash / bank reference
+    installer = Column(Boolean, default=False)       # the customer wants an installer
+    installation_fee = Column(Float, default=0)
     created = Column(DateTime, default=datetime.utcnow)
     updated = Column(DateTime, default=datetime.utcnow)
     items = relationship('ShopOrderItem', cascade='all, delete-orphan', order_by='ShopOrderItem.id')
@@ -114,6 +131,7 @@ class ShopOrderItem(Base):
     source_name = Column(String(100))
     source_url = Column(String(500))
     source_price = Column(Float)
+    supplier_company = Column(String(100))
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +167,13 @@ def selling_price(product, conf=None):
     return float(math.ceil(raw - 1e-9)) if raw > 0 else 0.0
 
 
+def install_fee_for(product, conf=None):
+    """The fee for an installer to fit this item: its own fee, otherwise the shop's default fee."""
+    if product.install_fee is not None:
+        return round(product.install_fee, 2)
+    return round(_num((conf or settings())['install_fee_default']), 2)
+
+
 def ensure_defaults():
     """Seed the default product source once (called at start-up)."""
     if db_session.query(ShopSource).first() is None:
@@ -162,6 +187,8 @@ def ensure_defaults():
 # ---------------------------------------------------------------------------
 
 _KEYWORDS = {
+    'razorwire': ('razor wire', 'razorwire', 'razor-wire', 'concertina', 'barbed wire', 'barbwire', 'razor tape',
+                  'security wire', 'palisade'),
     'cctv': ('cctv', 'dvr', 'nvr', 'ip camera', 'security camera', 'surveillance', 'dome camera', 'bullet camera',
              'hikvision', 'dahua', 'ezviz', 'hilook', 'poe switch'),
     'alarms': ('alarm', 'siren', 'intruder', 'motion sensor', 'motion detector', 'pir ', 'electric fence', 'energizer',
@@ -184,7 +211,7 @@ def classify(name, category_names):
     cats = ' '.join(category_names).lower()
     if any(w in text for w in _EXCLUDE):
         return None
-    order = ('cctv', 'alarms', 'borehole', 'solar')        # most specific first ("solar water pump" -> borehole)
+    order = ('razorwire', 'cctv', 'alarms', 'borehole', 'solar')        # most specific first ("solar water pump" -> borehole)
     for trade in order:
         if any(w in text for w in _KEYWORDS[trade]):
             return trade
@@ -339,7 +366,8 @@ def _maybe_daily_sync():
 
 def _public(p, conf):
     return {'id': p.id, 'name': p.name, 'trade': p.trade, 'description': p.description or '',
-            'image_url': p.image_url, 'price': selling_price(p, conf)}
+            'image_url': p.image_url, 'price': selling_price(p, conf), 'supplier_company': p.supplier_company or '',
+            'install_fee': install_fee_for(p, conf)}
 
 
 @shop_bp.get('/info')
@@ -348,7 +376,20 @@ def info():
     counts = dict.fromkeys(TRADES, 0)
     for (trade,) in db_session.query(ShopProduct.trade).filter_by(status='listed', in_stock=True):
         counts[trade] = counts.get(trade, 0) + 1
-    return jsonify(whatsapp_number=conf['whatsapp_number'], counts=counts)
+    return jsonify(whatsapp_number=conf['whatsapp_number'], counts=counts, business='ecommerce',
+                   min_deposit_percent=int(_num(conf['min_deposit_percent'], 70)),
+                   install_fee_default=_num(conf['install_fee_default']))
+
+
+@shop_bp.get('/products/<int:pid>/image')
+def product_image(pid):
+    p = db_session.get(ShopProduct, pid)
+    blob = p.image if p is not None else None
+    if not blob:
+        raise ApiError('No photo.', 404)
+    resp = Response(blob, mimetype=_logo_mime(blob) or 'image/jpeg')
+    resp.headers['Cache-Control'] = 'public, max-age=3600'
+    return resp
 
 
 @shop_bp.get('/products')
@@ -382,6 +423,16 @@ def _clean(data, key, limit, label, required=False):
     return value
 
 
+def _receipt(order, conf):
+    """What the customer is shown after ordering: the amounts and how to pay."""
+    return {'ref': order.ref, 'total': order.total, 'goods_total': round(order.total - (order.installation_fee or 0), 2),
+            'installer': bool(order.installer), 'installation_fee': order.installation_fee or 0,
+            'payment_option': order.payment_option, 'deposit_percent': order.deposit_percent or 0,
+            'deposit_due': order.deposit_due or 0, 'balance_on_delivery': round(order.total - (order.deposit_due or 0), 2),
+            'payment_method': order.payment_method, 'payment_instructions': conf['payment_instructions'],
+            'whatsapp_number': conf['whatsapp_number']}
+
+
 @shop_bp.post('/orders')
 def place_order():
     data = request.get_json(silent=True) or {}
@@ -399,10 +450,30 @@ def place_order():
     if len(lines) > 30:
         raise ApiError('Too many different items in one order.')
     conf = settings()
+
+    # How the customer pays: on delivery, or online now. Online means at least the minimum deposit, up to everything.
+    option = data.get('payment_option') or 'COD'          # an older page that does not ask means pay on delivery
+    if option not in PAY_OPTIONS:
+        raise ApiError('Choose how you would like to pay: cash on delivery, or pay online now.')
+    percent, method = 0, None
+    if option == 'ONLINE':
+        floor = int(min(100, max(1, _num(conf['min_deposit_percent'], 70))))
+        try:
+            percent = int(data.get('deposit_percent', 100))
+        except (TypeError, ValueError):
+            raise ApiError('Choose how much you would like to pay now.')
+        if not floor <= percent <= 100:
+            raise ApiError(f'To pay online, pay at least {floor}% now, or all of it.')
+        method = data.get('payment_method')
+        if method not in ONLINE_METHODS:
+            raise ApiError('Choose EcoCash or bank transfer.')
+
     order = ShopOrder(customer_name=name, phone=phone, email=_clean(data, 'email', 120, 'Email'),
                       town=_clean(data, 'town', 80, 'Town', required=True),
-                      address=_clean(data, 'address', 300, 'Address'), notes=_clean(data, 'notes', 1000, 'Notes'))
-    total = 0.0
+                      address=_clean(data, 'address', 300, 'Address'), notes=_clean(data, 'notes', 1000, 'Notes'),
+                      payment_option=option, deposit_percent=percent, payment_method=method,
+                      installer=bool(data.get('installer')))
+    goods, install = 0.0, 0.0
     for line in lines:
         try:
             pid, qty = int(line.get('id')), int(line.get('quantity', 1))
@@ -413,20 +484,41 @@ def place_order():
         if product is None or product.status != 'listed' or not product.in_stock:
             raise ApiError('One of the items is no longer available. Please refresh the page.')
         price = selling_price(product, conf)
-        total += price * qty
+        goods += price * qty
+        install += install_fee_for(product, conf)          # one installer visit per kind of item, however many
         order.items.append(ShopOrderItem(product_id=product.id, name=product.name, unit_price=price, quantity=qty,
                                          source_name=product.source_name, source_url=product.source_url,
-                                         source_price=product.source_price))
-    order.total = round(total, 2)
+                                         source_price=product.source_price, supplier_company=product.supplier_company))
+    order.installation_fee = round(install, 2) if order.installer else 0.0
+    order.total = round(goods + order.installation_fee, 2)
+    order.deposit_due = round(order.total * percent / 100, 2) if option == 'ONLINE' else 0.0
     db_session.add(order)
     db_session.flush()
     order.ref = f'SO{order.id:05d}'
     db_session.commit()
-    log.info('New shop order %s for $%.2f', order.ref, order.total)
-    return jsonify(ref=order.ref, total=order.total, whatsapp_number=conf['whatsapp_number']), 201
+    log.info('New shop order %s for $%.2f (%s)', order.ref, order.total, option)
+    return jsonify(_receipt(order, conf)), 201
 
 
-PUBLIC_ENDPOINTS.update({'shop.info', 'shop.products', 'shop.place_order'})
+@shop_bp.post('/orders/<ref>/payment')
+def order_payment(ref):
+    """The customer sends the EcoCash / bank reference of the money they paid. Needs the order number and phone."""
+    data = request.get_json(silent=True) or {}
+    if _limited(f'shop-pay:{_client_ip()}', 10, 600):
+        raise ApiError('Too many tries. Please wait a few minutes.', 429)
+    digits = re.sub(r'\D', '', _clean(data, 'phone', 40, 'Phone number', required=True))
+    order = db_session.query(ShopOrder).filter_by(ref=str(ref).upper()[:20]).first()
+    if order is None or len(digits) < 7 or digits[-7:] != re.sub(r'\D', '', order.phone or '')[-7:]:
+        raise ApiError('We could not find that order. Check the order number and the phone number you used.', 404)
+    if order.payment_option != 'ONLINE':
+        raise ApiError('This order is cash on delivery, so there is no payment to confirm yet.')
+    order.payment_reference = _clean(data, 'reference', 100, 'Payment reference', required=True)
+    order.updated = datetime.utcnow()
+    db_session.commit()
+    return jsonify(ok=True)
+
+
+PUBLIC_ENDPOINTS.update({'shop.info', 'shop.products', 'shop.product_image', 'shop.place_order', 'shop.order_payment'})
 
 
 # ---------------------------------------------------------------------------
@@ -441,7 +533,7 @@ def _operator():
 def _admin_product(p, conf):
     return {**_public(p, conf), 'status': p.status, 'in_stock': bool(p.in_stock), 'source_id': p.source_id,
             'source_name': p.source_name, 'source_url': p.source_url, 'source_price': p.source_price,
-            'price_override': p.price_override, 'last_seen': p.last_seen.isoformat() if p.last_seen else None}
+            'price_override': p.price_override, 'install_fee_own': p.install_fee, 'last_seen': p.last_seen.isoformat() if p.last_seen else None}
 
 
 def _source(s):
@@ -451,11 +543,17 @@ def _source(s):
 
 
 def _order(o):
+    paid = o.paid_amount or 0
     return {'id': o.id, 'ref': o.ref, 'customer_name': o.customer_name, 'phone': o.phone, 'email': o.email,
             'town': o.town, 'address': o.address, 'notes': o.notes, 'status': o.status, 'admin_note': o.admin_note,
             'total': o.total, 'created': o.created.isoformat() if o.created else None,
+            'payment_option': o.payment_option or 'COD', 'deposit_percent': o.deposit_percent or 0,
+            'deposit_due': o.deposit_due or 0, 'paid_amount': paid, 'balance_due': round(max(0.0, (o.total or 0) - paid), 2),
+            'payment_method': o.payment_method, 'payment_reference': o.payment_reference,
+            'installer': bool(o.installer), 'installation_fee': o.installation_fee or 0,
             'items': [{'name': i.name, 'unit_price': i.unit_price, 'quantity': i.quantity,
-                       'source_name': i.source_name, 'source_url': i.source_url, 'source_price': i.source_price}
+                       'source_name': i.source_name, 'source_url': i.source_url, 'source_price': i.source_price,
+                       'supplier_company': i.supplier_company}
                       for i in o.items]}
 
 
@@ -467,7 +565,8 @@ def admin_overview():
     for (status,) in db_session.query(ShopProduct.status):
         statuses[status] = statuses.get(status, 0) + 1
     new_orders = db_session.query(ShopOrder).filter_by(status='NEW').count()
-    return jsonify(settings={k: conf[k] for k in ('markup_percent', 'markup_flat', 'whatsapp_number')},
+    return jsonify(settings={k: conf[k] for k in ('markup_percent', 'markup_flat', 'whatsapp_number', 'min_deposit_percent',
+                                   'install_fee_default', 'payment_instructions')},
                    sources=[_source(s) for s in db_session.query(ShopSource).order_by(ShopSource.id)],
                    products=statuses, new_orders=new_orders, syncing=_sync_lock.locked())
 
@@ -484,6 +583,18 @@ def admin_settings():
             _set(key, value)
     if 'whatsapp_number' in data:
         _set('whatsapp_number', re.sub(r'\D', '', str(data['whatsapp_number']))[:20])
+    if 'min_deposit_percent' in data:
+        value = _num(data['min_deposit_percent'], None)
+        if value is None or not 1 <= value <= 100:
+            raise ApiError('The smallest deposit must be between 1% and 100%.')
+        _set('min_deposit_percent', int(value))
+    if 'install_fee_default' in data:
+        value = _num(data['install_fee_default'], None)
+        if value is None or value < 0 or value > 100000:
+            raise ApiError('The installer fee must be a number, 0 or more.')
+        _set('install_fee_default', value)
+    if 'payment_instructions' in data:
+        _set('payment_instructions', _clean(data, 'payment_instructions', 500, 'Payment instructions'))
     db_session.commit()
     return admin_overview()
 
@@ -576,8 +687,13 @@ def _product_fields(p, data):
         p.price_override = None if value in (None, '') else _num(value, None)
         if p.price_override is not None and p.price_override <= 0:
             raise ApiError('The selling price must be more than 0.')
+    if 'install_fee' in data:
+        value = data['install_fee']
+        p.install_fee = None if value in (None, '') else _num(value, None)
+        if p.install_fee is not None and p.install_fee < 0:
+            raise ApiError('The installer fee cannot be negative.')
     for key, limit in (('name', 250), ('description', 2000), ('image_url', 500), ('source_name', 100),
-                       ('source_url', 500)):
+                       ('source_url', 500), ('supplier_company', 100)):
         if key in data:
             setattr(p, key, _clean(data, key, limit, key.replace('_', ' ').capitalize(), required=(key == 'name')))
     if 'source_price' in data:
@@ -606,8 +722,44 @@ def edit_product(pid):
     p = db_session.get(ShopProduct, pid) or _not_found()
     data = request.get_json(silent=True) or {}
     if p.source_id:      # synced fields would be overwritten by the next sync
-        data = {k: v for k, v in data.items() if k in ('status', 'trade', 'price_override', 'name', 'description')}
+        data = {k: v for k, v in data.items() if k in ('status', 'trade', 'price_override', 'name', 'description',
+                                                       'supplier_company', 'install_fee')}
     _product_fields(p, data)
+    db_session.commit()
+    return jsonify(_admin_product(p, settings()))
+
+
+@shop_bp.put('/admin/products/<int:pid>/image')
+def set_product_image(pid):
+    """Body: {"image": "<base64 or data: URL of a PNG/JPEG>"}: the operator's own photo of an item added by hand."""
+    _operator()
+    p = db_session.get(ShopProduct, pid) or _not_found()
+    if p.source_id:
+        raise ApiError("Photos of items read from another shop come from that shop. Add the item by hand to use your own photo.")
+    raw = (request.get_json(silent=True) or {}).get('image') or ''
+    if raw.startswith('data:') and ',' in raw:
+        raw = raw.split(',', 1)[1]
+    try:
+        blob = base64.b64decode(raw, validate=True)
+    except (ValueError, TypeError):
+        raise ApiError('That is not a valid image.')
+    if not _logo_mime(blob):
+        raise ApiError('Please use a PNG or JPEG photo.')
+    if len(blob) > MAX_IMAGE_BYTES:
+        raise ApiError('The photo is too big (1 MB at most).')
+    p.image = blob
+    p.image_url = f'/api/shop/products/{p.id}/image?v={len(blob)}'
+    db_session.commit()
+    return jsonify(_admin_product(p, settings()))
+
+
+@shop_bp.delete('/admin/products/<int:pid>/image')
+def remove_product_image(pid):
+    _operator()
+    p = db_session.get(ShopProduct, pid) or _not_found()
+    p.image = None
+    if (p.image_url or '').startswith('/api/shop/products/'):
+        p.image_url = None
     db_session.commit()
     return jsonify(_admin_product(p, settings()))
 
@@ -657,6 +809,13 @@ def edit_order(oid):
         if data['status'] not in ORDER_STATUSES:
             raise ApiError('Unknown order status.')
         o.status = data['status']
+    if 'paid_amount' in data:
+        amount = _num(data['paid_amount'], None)
+        if amount is None or amount < 0 or amount > (o.total or 0) + 0.005:
+            raise ApiError('The amount received must be between $0 and the order total.')
+        o.paid_amount = round(amount, 2)
+        if o.paid_amount > 0 and o.status in ('NEW', 'CONTACTED'):
+            o.status = 'PAID'
     if 'admin_note' in data:
         o.admin_note = _clean(data, 'admin_note', 1000, 'Note')
     o.updated = datetime.utcnow()

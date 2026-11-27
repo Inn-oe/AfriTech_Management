@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { useConfirm } from '../components/ConfirmDialog.jsx';
 import Modal from '../components/Modal.jsx';
-import { TRADES, usd } from '../components/PublicSite.jsx';
+import { SHOP_TRADES as TRADES, usd } from '../components/PublicSite.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { ErrorBox, Loading, PageHeader, SearchBox, StatCard } from '../components/ui.jsx';
 import { dateTime } from '../format.js';
@@ -54,7 +54,7 @@ export function ShopOrders() {
         <div className="card">
           <div className="table-responsive">
             <table className="table table-hover align-middle mb-0">
-              <thead><tr><th>Order</th><th>Customer</th><th>Town</th><th>Items</th><th className="text-end">Total</th><th>Status</th><th /></tr></thead>
+              <thead><tr><th>Order</th><th>Customer</th><th>Town</th><th>Items</th><th className="text-end">Total</th><th>Payment</th><th>Status</th><th /></tr></thead>
               <tbody>
                 {(data?.orders || []).map((o) => (
                   <tr key={o.id} role="button" onClick={() => setOpen(o)}>
@@ -62,12 +62,13 @@ export function ShopOrders() {
                     <td>{o.customer_name}<div className="small text-muted">{o.phone}</div></td>
                     <td>{o.town}</td>
                     <td className="small">{o.items.map((i) => `${i.quantity} × ${i.name}`).join(', ')}</td>
-                    <td className="text-end fw-semibold">{usd(o.total)}</td>
+                    <td className="text-end fw-semibold">{usd(o.total)}{o.installer && <div className="small text-muted fw-normal"><i className="fas fa-screwdriver-wrench me-1" />installer</div>}</td>
+                    <td><PaymentBadge o={o} /></td>
                     <td><span className={`badge text-bg-${ORDER_COLORS[o.status]}`}>{o.status}</span></td>
                     <td className="text-end"><i className="fas fa-chevron-right text-muted" /></td>
                   </tr>
                 ))}
-                {!data?.orders?.length && <tr><td colSpan="7" className="text-center text-muted py-4">No orders yet.</td></tr>}
+                {!data?.orders?.length && <tr><td colSpan="8" className="text-center text-muted py-4">No orders yet.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -90,21 +91,23 @@ export function ShopOrders() {
               </select>
             </div>
           </div>
+          <PaymentBox key={`${open.id}-${open.paid_amount}`} o={open} onSave={(v) => update(open, { paid_amount: v })} />
           {open.notes && <div className="alert alert-light small"><strong>Customer note:</strong> {open.notes}</div>}
           <table className="table table-sm">
-            <thead><tr><th>Item</th><th className="text-end">Qty</th><th className="text-end">Our price</th><th>Buy from</th><th className="text-end">Their price</th></tr></thead>
+            <thead><tr><th>Item</th><th className="text-end">Qty</th><th className="text-end">Our price</th><th>Supplier / buy from</th><th className="text-end">Their price</th></tr></thead>
             <tbody>
               {open.items.map((i) => (
                 <tr key={i.name}>
                   <td>{i.name}</td><td className="text-end">{i.quantity}</td><td className="text-end">{usd(i.unit_price)}</td>
-                  <td className="small">{i.source_url ? <a href={i.source_url} target="_blank" rel="noreferrer">{i.source_name || 'Shop'} <i className="fas fa-up-right-from-square" /></a> : (i.source_name || '—')}</td>
+                  <td className="small">{i.supplier_company && <div><strong>{i.supplier_company}</strong></div>}{i.source_url ? <a href={i.source_url} target="_blank" rel="noreferrer">{i.source_name || 'Shop'} <i className="fas fa-up-right-from-square" /></a> : (i.source_name || (i.supplier_company ? '' : '—'))}</td>
                   <td className="text-end small">{i.source_price ? usd(i.source_price) : '—'}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr><th colSpan="2">Total</th><th className="text-end">{usd(open.total)}</th><th className="small text-muted">Margin</th>
-                <th className="text-end small">{usd(open.total - open.items.reduce((n, i) => n + (i.source_price || 0) * i.quantity, 0))}</th></tr>
+              {open.installer && <tr><th colSpan="2">Installer fee</th><th className="text-end">{usd(open.installation_fee)}</th><th colSpan="2" /></tr>}
+              <tr><th colSpan="2">Total</th><th className="text-end">{usd(open.total)}</th><th className="small text-muted">Margin on goods</th>
+                <th className="text-end small">{usd(open.total - (open.installation_fee || 0) - open.items.reduce((n, i) => n + (i.source_price || 0) * i.quantity, 0))}</th></tr>
             </tfoot>
           </table>
           <label className="form-label small fw-semibold" htmlFor="o-note">Our notes (not shown to the customer)</label>
@@ -112,6 +115,41 @@ export function ShopOrders() {
         </Modal>
       )}
     </>
+  );
+}
+
+function PaymentBadge({ o }) {
+  const method = o.payment_option === 'ONLINE' ? `Online ${o.deposit_percent}%` : 'On delivery';
+  const state = o.paid_amount >= o.total && o.total > 0 ? ['success', 'Paid in full'] : o.paid_amount > 0 ? ['info', `Paid ${usd(o.paid_amount)}`] : ['warning', 'Not paid'];
+  return (
+    <>
+      <span className={`badge text-bg-${state[0]}`}>{state[1]}</span>
+      <div className="small text-muted">{method}</div>
+    </>
+  );
+}
+
+function PaymentBox({ o, onSave }) {
+  const [received, setReceived] = useState(String(o.paid_amount || ''));
+  return (
+    <div className="border rounded p-3 mb-3 bg-light">
+      <div className="fw-semibold mb-2"><i className="fas fa-money-bill-wave me-2" />Payment</div>
+      <div className="small mb-2">
+        {o.payment_option === 'ONLINE'
+          ? <>Customer chose to <strong>pay {o.deposit_percent}% online now</strong> ({usd(o.deposit_due)}) by {o.payment_method === 'TRANSFER' ? 'bank transfer' : 'EcoCash'}; the balance of {usd(o.total - o.deposit_due)} is due on delivery.</>
+          : <>Customer chose <strong>cash on delivery</strong>: {usd(o.total)} to collect when delivered.</>}
+        {o.payment_reference && <div>Payment reference they sent: <strong>{o.payment_reference}</strong></div>}
+        {o.installer && <div><i className="fas fa-screwdriver-wrench me-1" />Wants an installer: {o.installation_fee > 0 ? usd(o.installation_fee) : 'fee to agree'} (included in the total).</div>}
+      </div>
+      <div className="d-flex flex-wrap gap-2 align-items-end">
+        <div>
+          <label className="form-label small mb-1" htmlFor="o-paid">Money received so far ($)</label>
+          <input id="o-paid" type="number" min="0" max={o.total} step="0.01" className="form-control" style={{ width: 170 }} value={received} onChange={(e) => setReceived(e.target.value)} />
+        </div>
+        <button type="button" className="btn btn-primary" disabled={Number(received || 0) === Number(o.paid_amount || 0)} onClick={() => onSave(Number(received || 0))}>Save payment</button>
+        <div className="ms-auto text-end small">Balance still to collect<div className="fs-5 fw-bold">{usd(o.balance_due)}</div></div>
+      </div>
+    </div>
   );
 }
 
@@ -126,7 +164,7 @@ function NoteBox({ value, onSave }) {
 }
 
 // ---------------------------------------------------------------- Products
-const EMPTY_ITEM = { name: '', trade: 'solar', source_name: '', source_url: '', source_price: '', price_override: '', image_url: '', description: '' };
+const EMPTY_ITEM = { name: '', trade: 'solar', source_name: '', source_url: '', source_price: '', price_override: '', image_url: '', description: '', supplier_company: '', install_fee: '' };
 
 export function ShopProducts() {
   const [status, setStatus] = useState('pending');
@@ -181,7 +219,7 @@ export function ShopProducts() {
   return (
     <>
       <PageHeader title="Shop products" icon="fa-boxes-stacked" subtitle="Items read from other shops arrive as 'Waiting'. List the ones you want to sell; the price shown is their price plus your markup.">
-        <button type="button" className="btn btn-primary" onClick={() => setEditing({ ...EMPTY_ITEM })}><i className="fas fa-plus me-2" />Add item by hand</button>
+        <button type="button" className="btn btn-primary" onClick={() => setEditing({ ...EMPTY_ITEM })}><i className="fas fa-plus me-2" />List a product</button>
       </PageHeader>
       <div className="d-flex gap-2 flex-wrap mb-3 align-items-center">
         {[['pending', 'Waiting'], ['listed', 'Listed'], ['hidden', 'Hidden'], ['', 'All']].map(([s, label]) => (
@@ -226,6 +264,7 @@ export function ShopProducts() {
                         {p.image_url ? <img src={p.image_url} alt="" width="40" height="40" className="rounded border" style={{ objectFit: 'contain' }} referrerPolicy="no-referrer" loading="lazy" /> : null}
                         <div>
                           <div className="fw-semibold small">{p.name}</div>
+                          {p.supplier_company && <div className="small text-muted"><i className="fas fa-building me-1" />{p.supplier_company}</div>}
                           {!p.in_stock && <span className="badge text-bg-secondary">Out of stock at source</span>}
                         </div>
                       </div>
@@ -246,12 +285,8 @@ export function ShopProducts() {
                       </select>
                     </td>
                     <td className="text-end text-nowrap">
-                      {!p.source_id && (
-                        <>
-                          <button type="button" className="btn btn-sm btn-link" title="Edit" onClick={() => setEditing({ ...EMPTY_ITEM, ...p, price_override: p.price_override ?? '' })}><i className="fas fa-pen" /></button>
-                          <button type="button" className="btn btn-sm btn-link text-danger" title="Delete" onClick={() => remove(p)}><i className="fas fa-trash" /></button>
-                        </>
-                      )}
+                      <button type="button" className="btn btn-sm btn-link" title="Edit" onClick={() => setEditing({ ...EMPTY_ITEM, ...p, price_override: p.price_override ?? '', install_fee: p.install_fee_own ?? '', supplier_company: p.supplier_company || '' })}><i className="fas fa-pen" /></button>
+                      {!p.source_id && <button type="button" className="btn btn-sm btn-link text-danger" title="Delete" onClick={() => remove(p)}><i className="fas fa-trash" /></button>}
                     </td>
                   </tr>
                 ))}
@@ -287,22 +322,40 @@ function PriceCell({ p, onSave }) {
 }
 
 function ItemForm({ item, onClose, onSaved }) {
+  const synced = !!item.source_id;           // read from another shop: only our own details can change
   const [v, setV] = useState(item);
+  const [photo, setPhoto] = useState(null);  // a new photo chosen from this computer: { name, data }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const notify = useToast();
   const set = (k) => (e) => setV((x) => ({ ...x, [k]: e.target.value }));
+
+  const pickPhoto = (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!/^image\/(png|jpeg)$/.test(file.type)) { notify('Please choose a PNG or JPEG photo.', 'error'); return; }
+    if (file.size > 1000000) { notify('The photo is too big (1 MB at most).', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = () => setPhoto({ name: file.name, data: reader.result });
+    reader.readAsDataURL(file);
+  };
+
   const save = async (e) => {
     e.preventDefault();
     setBusy(true);
     setError('');
     const body = {
-      name: v.name, trade: v.trade, source_name: v.source_name, source_url: v.source_url, image_url: v.image_url,
-      description: v.description, source_price: v.source_price === '' ? 0 : Number(v.source_price),
+      trade: v.trade, supplier_company: v.supplier_company, install_fee: v.install_fee === '' ? null : Number(v.install_fee),
       price_override: v.price_override === '' ? null : Number(v.price_override),
+      ...(synced ? {} : {
+        name: v.name, source_name: v.source_name, source_url: v.source_url, image_url: v.image_url,
+        description: v.description, source_price: v.source_price === '' ? 0 : Number(v.source_price),
+      }),
     };
     try {
-      if (item.id) await api.patch(`/shop/admin/products/${item.id}`, body);
-      else await api.post('/shop/admin/products', body);
+      const saved = item.id ? await api.patch(`/shop/admin/products/${item.id}`, body) : await api.post('/shop/admin/products', body);
+      if (photo && !synced) await api.put(`/shop/admin/products/${saved.id}/image`, { image: photo.data });
       onSaved();
     } catch (err) {
       setError(err.message);
@@ -315,27 +368,45 @@ function ItemForm({ item, onClose, onSaved }) {
       <input id={`it-${k}`} className="form-control" value={v[k] ?? ''} onChange={set(k)} {...{ ...props, col: undefined }} />
     </div>
   );
+  const preview = photo ? photo.data : v.image_url;
   return (
-    <Modal title={item.id ? 'Edit item' : 'Add item by hand'} onClose={onClose}
+    <Modal title={item.id ? 'Edit item' : 'List a product'} onClose={onClose}
       footer={<><button type="button" className="btn btn-light" onClick={onClose}>Cancel</button><button type="submit" form="item-form" className="btn btn-primary" disabled={busy}>Save</button></>}>
       <form id="item-form" onSubmit={save} className="row g-3">
         {error && <div className="col-12"><div className="alert alert-danger py-2 small mb-0">{error}</div></div>}
-        {field('name', 'Item name', { required: true, maxLength: 250 })}
+        {synced ? <div className="col-12"><div className="fw-semibold">{v.name}</div><div className="small text-muted">Read from {v.source_name || 'another shop'}. You can set the supplier company, your own price and the installer fee.</div></div>
+          : field('name', 'Product name', { required: true, maxLength: 250 })}
         <div className="col-sm-6">
           <label className="form-label small fw-semibold" htmlFor="it-trade">Category</label>
           <select id="it-trade" className="form-select" value={v.trade} onChange={set('trade')}>
             {TRADES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
           </select>
         </div>
-        {field('source_name', 'Bought from (e.g. Mahommed Mussa)', { col: 'col-sm-6', maxLength: 100 })}
-        {field('source_price', "Their price (USD)", { col: 'col-sm-6', type: 'number', min: 0, step: '0.01' })}
-        {field('price_override', 'Our selling price (empty = their price + markup)', { col: 'col-sm-6', type: 'number', min: 0, step: '0.01' })}
-        {field('image_url', 'Photo link (optional)', { type: 'url', maxLength: 500, placeholder: 'https://…' })}
-        {field('source_url', 'Link to the item at the source shop (optional)', { type: 'url', maxLength: 500 })}
-        <div className="col-12">
-          <label className="form-label small fw-semibold" htmlFor="it-desc">Short description (optional)</label>
-          <textarea id="it-desc" className="form-control" rows="2" maxLength={2000} value={v.description || ''} onChange={set('description')} />
-        </div>
+        {field('supplier_company', 'Company providing this product', { col: 'col-sm-6', maxLength: 100, placeholder: 'e.g. Steel Fencing Zimbabwe' })}
+        {!synced && field('source_price', 'Price today (USD)', { col: 'col-sm-6', type: 'number', min: 0, step: '0.01' })}
+        {field('price_override', synced ? 'Our selling price (empty = their price + markup)' : 'Our selling price (empty = price today + markup)', { col: 'col-sm-6', type: 'number', min: 0, step: '0.01' })}
+        {field('install_fee', 'Installer fee for this item (empty = the shop default)', { col: 'col-sm-6', type: 'number', min: 0, step: '0.01' })}
+        {!synced && (
+          <>
+            <div className="col-12">
+              <div className="form-label small fw-semibold mb-1">Photo</div>
+              <div className="d-flex align-items-center gap-3 flex-wrap">
+                {preview ? <img src={preview} alt="" width="72" height="72" className="rounded border" style={{ objectFit: 'contain' }} referrerPolicy="no-referrer" /> : <div className="rounded border bg-light d-flex align-items-center justify-content-center text-muted" style={{ width: 72, height: 72 }}><i className="fas fa-image" /></div>}
+                <label className="btn btn-outline-primary btn-sm mb-0"><i className="fas fa-upload me-2" />{preview ? 'Change photo' : 'Upload photo'}
+                  <input type="file" accept="image/png,image/jpeg" hidden onChange={pickPhoto} />
+                </label>
+                <span className="small text-muted">PNG or JPEG, up to 1 MB. Or paste a photo link below.</span>
+              </div>
+            </div>
+            {field('image_url', 'Photo link (optional)', { type: 'text', maxLength: 500, placeholder: 'https://…' })}
+            {field('source_name', 'Where you found it (private, e.g. a shop name)', { col: 'col-sm-6', maxLength: 100 })}
+            {field('source_url', 'Link to it online (private, optional)', { col: 'col-sm-6', type: 'url', maxLength: 500 })}
+            <div className="col-12">
+              <label className="form-label small fw-semibold" htmlFor="it-desc">Short description (optional)</label>
+              <textarea id="it-desc" className="form-control" rows="2" maxLength={2000} value={v.description || ''} onChange={set('description')} />
+            </div>
+          </>
+        )}
       </form>
     </Modal>
   );
@@ -401,7 +472,7 @@ export function ShopSettings() {
   if (loading && !data) return <Loading />;
   return (
     <>
-      <PageHeader title="Shop settings" icon="fa-sliders" subtitle="Your markup, your WhatsApp number, and the shops whose items and prices are read every day." />
+      <PageHeader title="Shop settings" icon="fa-sliders" subtitle="Your markup, how customers pay, installer fees, your WhatsApp number, and the shops whose items and prices are read every day." />
       <ErrorBox error={error} onRetry={reload} />
       {data && (
         <div className="row g-3 mb-3">
@@ -429,6 +500,20 @@ export function ShopSettings() {
             </div>
             <div className="col-lg-3"><button type="submit" className="btn btn-primary w-100">Save</button></div>
             <div className="col-12 small text-muted">{example} Prices are rounded up to a whole dollar. An item with its own price ignores the markup.</div>
+            <div className="col-12"><hr className="my-1" /><div className="fw-semibold">Paying and installing</div></div>
+            <div className="col-sm-4 col-lg-3">
+              <label className="form-label small fw-semibold" htmlFor="s-dep">Smallest deposit when paying online (%)</label>
+              <input id="s-dep" className="form-control" type="number" min="1" max="100" step="1" value={form.min_deposit_percent} onChange={(e) => setForm({ ...form, min_deposit_percent: e.target.value })} />
+            </div>
+            <div className="col-sm-4 col-lg-3">
+              <label className="form-label small fw-semibold" htmlFor="s-fee">Installer fee when an item has none ($)</label>
+              <input id="s-fee" className="form-control" type="number" min="0" step="0.5" value={form.install_fee_default} onChange={(e) => setForm({ ...form, install_fee_default: e.target.value })} />
+            </div>
+            <div className="col-lg-6">
+              <label className="form-label small fw-semibold" htmlFor="s-pay">How customers pay you (shown after they order)</label>
+              <textarea id="s-pay" className="form-control" rows="2" maxLength={500} value={form.payment_instructions} placeholder="EcoCash: 077 123 4567 (Afritech). Bank: ZB Bank, account 1234567890, Harare branch." onChange={(e) => setForm({ ...form, payment_instructions: e.target.value })} />
+            </div>
+            <div className="col-12 small text-muted">Customers can pay cash on delivery, or pay online up front: at least this deposit, and the balance on delivery. The installer fee is charged once per kind of item when the customer asks for an installer.</div>
           </div>
         </form>
       )}

@@ -18,6 +18,25 @@ export const TRADES = [
     photo: '/landing/alarms.jpg', photoAlt: 'Technician in a hard hat fitting a security device to a wall' },
 ];
 
+// The shop sells one more kind of product than the landing page features.
+export const SHOP_TRADES = [
+  ...TRADES,
+  { key: 'razorwire', label: 'Razor wire & fencing', icon: 'fa-road-barrier', tone: 'slate', noun: 'razor wire' },
+];
+
+/** The statement customers must see: this is an online business, not a walk-in shop. */
+export function OnlineBusinessNotice({ className = '' }) {
+  return (
+    <div className={`sp-notice ${className}`} role="note">
+      <i className="fas fa-truck-fast" />
+      <div>
+        <strong>We are an online (e-commerce) business, not a shop.</strong> There is no walk-in store: you order here and
+        we deliver to your address.
+      </div>
+    </div>
+  );
+}
+
 export function PublicNav({ cartCount = 0, onCart }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -99,7 +118,7 @@ export function useCart() {
     const hit = cur.find((i) => i.id === product.id);
     save(hit
       ? cur.map((i) => (i.id === product.id ? { ...i, quantity: Math.min(50, i.quantity + qty) } : i))
-      : [...cur, { id: product.id, name: product.name, price: product.price, image_url: product.image_url, quantity: qty }]);
+      : [...cur, { id: product.id, name: product.name, price: product.price, image_url: product.image_url, install_fee: product.install_fee || 0, quantity: qty }]);
   }, [save]);
 
   const setQty = useCallback((id, qty) => {
