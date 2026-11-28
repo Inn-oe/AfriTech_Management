@@ -22,6 +22,7 @@ export const TRADES = [
 export const SHOP_TRADES = [
   ...TRADES,
   { key: 'razorwire', label: 'Razor wire & fencing', icon: 'fa-road-barrier', tone: 'slate', noun: 'razor wire' },
+  { key: 'materials', label: 'Installation materials', icon: 'fa-plug', tone: 'slate', noun: 'installation materials' },
 ];
 
 /** The statement customers must see: this is an online business, not a walk-in shop. */
@@ -32,6 +33,19 @@ export function OnlineBusinessNotice({ className = '' }) {
       <div>
         <strong>We are an online (e-commerce) business, not a shop.</strong> There is no walk-in store: you order here and
         we deliver to your address.
+      </div>
+    </div>
+  );
+}
+
+/** What buyers are told about installers: a good chance of a credible one, and no installer profiles in the app. */
+export function InstallerNotice({ className = '' }) {
+  return (
+    <div className={`sp-notice sp-notice-green ${className}`} role="note">
+      <i className="fas fa-screwdriver-wrench" />
+      <div>
+        <strong>Buy here and there is a high chance of getting a credible installer.</strong> We do not list installer
+        profiles in the app: if you ask for an installer, we arrange one for you, for a fee.
       </div>
     </div>
   );

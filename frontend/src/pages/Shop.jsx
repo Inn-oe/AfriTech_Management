@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import {
-  OnlineBusinessNotice, ProductImage, PublicFooter, PublicNav, SHOP_TRADES as TRADES, usd, useCart,
+  InstallerNotice, OnlineBusinessNotice, ProductImage, PublicFooter, PublicNav, SHOP_TRADES as TRADES, usd, useCart,
 } from '../components/PublicSite.jsx';
 
 // Deposit choices for paying online: the shop's smallest deposit, then every 10% up to paying it all.
@@ -82,9 +82,9 @@ function Checkout({ cart, info, onClose, onDone }) {
             <label className={`sp-choice sp-installer${values.installer ? ' on' : ''}`}>
               <input type="checkbox" checked={values.installer} onChange={(e) => setValues((v) => ({ ...v, installer: e.target.checked }))} />
               <span>
-                <strong><i className="fas fa-screwdriver-wrench me-1" />Add a professional installer</strong>
+                <strong><i className="fas fa-screwdriver-wrench me-1" />Add an installer</strong>
                 <small>
-                  We promise a qualified installer will fit your order. It is an extra fee:{' '}
+                  There is a high chance of a credible installer when you buy here. We do not list installer profiles; we arrange one for you. It is an extra fee:{' '}
                   {feeAll > 0 ? <b>{usd(feeAll)}</b> : <b>confirmed when we call you</b>}.
                 </small>
               </span>
@@ -246,7 +246,7 @@ function Done({ result, onClose }) {
 
         {result.installer && (
           <p className="small mt-3 mb-0"><i className="fas fa-screwdriver-wrench me-1 text-success" />
-            <strong>Your installer:</strong> we will provide a qualified installer and agree the date with you when we call.</p>
+            <strong>Your installer:</strong> there is a high chance of a credible installer when you buy here. We do not list installer profiles in the app, so we will arrange one for you and agree the date when we call.</p>
         )}
         <p className="text-muted small mt-2">We are an online business, not a shop, so everything is delivered to your address. We will contact you shortly to confirm the price and delivery.</p>
         {wa && (
@@ -329,11 +329,11 @@ export default function Shop() {
         <div className="lp-wrap">
           <div className="lp-eyebrow">Online store · E-commerce</div>
           <h1>Solar, CCTV, alarms, razor wire &amp; borehole equipment.<span>Ordered online, delivered to you.</span></h1>
-          <p className="lead">We are an online (e-commerce) business, not a shop. Choose your items, order here, and we deliver. Need it fitted? We provide an installer for a fee.</p>
+          <p className="lead">We are an online (e-commerce) business, not a shop. Choose your items, order here, and we deliver. Need it fitted? There is a high chance of a credible installer when you buy here, arranged for a fee.</p>
           <div className="sp-promises">
             <span><i className="fas fa-truck-fast" />Delivered to your address</span>
             <span><i className="fas fa-money-bill-wave" />Pay on delivery, or {info.min_deposit_percent || 70}% or more up front online</span>
-            <span><i className="fas fa-screwdriver-wrench" />A qualified installer, for a fee</span>
+            <span><i className="fas fa-screwdriver-wrench" />A credible installer, arranged for a fee</span>
           </div>
         </div>
       </section>
@@ -357,7 +357,8 @@ export default function Shop() {
 
           {data.error && <div className="alert alert-danger">{data.error}</div>}
           {data.loading && <div className="text-center text-muted py-5"><span className="spinner-border spinner-border-sm me-2" />Loading products…</div>}
-          <OnlineBusinessNotice className="mb-3" />
+          <OnlineBusinessNotice className="mb-2" />
+          <InstallerNotice className="mb-3" />
           {!data.loading && !data.error && !data.products.length && (
             <div className="sp-empty">
               <i className="fas fa-box-open" />

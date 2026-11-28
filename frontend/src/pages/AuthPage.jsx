@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { PRODUCT_NAME } from '../components/Brand.jsx';
-import { OnlineBusinessNotice, PublicFooter, PublicNav, TRADES, useCart } from '../components/PublicSite.jsx';
+import { InstallerNotice, OnlineBusinessNotice, PublicFooter, PublicNav, TRADES, useCart } from '../components/PublicSite.jsx';
 import { ProductCard } from './Shop.jsx';
 
 // ---- Audience 1: installation businesses (B2B). Exactly the eight tools the software has.
@@ -47,13 +47,14 @@ const FOR_BUSINESSES = {
 const FOR_BUYERS = {
   badge: 'For property owners & buyers (direct clients)',
   title: 'Buy equipment online. We deliver to you.',
-  points: ['Browse solar, CCTV, borehole and alarm hardware', 'Delivery arranged to your address', 'Pay by EcoCash, bank transfer or cash', 'Add a professional installer for a fee when you need one'],
+  points: ['Browse solar, CCTV, borehole and alarm hardware', 'Delivery arranged to your address', 'Pay by EcoCash, bank transfer or cash', 'Ask for an installer when you order, for a fee'],
+  note: 'Buy here and there is a high chance of getting a credible installer. We do not list installer profiles in the app: we arrange one for you.',
 };
 
 const STEPS = [
   { title: 'Choose your path', buyer: 'Browse the equipment shop and add what you need to your order.', business: 'Create your company account in a couple of minutes.' },
   { title: 'Order or set up', buyer: 'Place your order and we arrange delivery to your address.', business: 'Add your logo, products and team with the right roles.' },
-  { title: 'Get it fitted, or get paid', buyer: 'Ask for a professional installer, for a fee, if you want one.', business: 'Quote, invoice, install and get paid, all tracked in one place.' },
+  { title: 'Get it fitted, or get paid', buyer: 'Ask for an installer, for a fee. There is a high chance of a credible one, arranged for you; we do not list installer profiles.', business: 'Quote, invoice, install and get paid, all tracked in one place.' },
 ];
 
 /** Up to eight items from the equipment shop. Shows a friendly message when the shop has nothing listed yet. */
@@ -76,6 +77,7 @@ function ShopStrip() {
         <h2 className="lp-h2">Buy solar, CCTV, borehole &amp; alarm equipment</h2>
         <p className="lp-sub">For homes, farms and businesses. Order online and we deliver.</p>
         <OnlineBusinessNotice className="lp-shop-note" />
+        <InstallerNotice className="lp-shop-note" />
         {state.loading && <div className="text-center text-muted py-4"><span className="spinner-border spinner-border-sm me-2" />Loading products…</div>}
         {!state.loading && !state.items.length && (
           <div className="sp-empty">
@@ -261,6 +263,7 @@ export default function AuthPage({ mode }) {
                 <span className="lp-who-badge"><i className="fas fa-house-signal" />{FOR_BUYERS.badge}</span>
                 <h3>{FOR_BUYERS.title}</h3>
                 <ul>{FOR_BUYERS.points.map((x) => <li key={x}>{x}</li>)}</ul>
+                <p className="lp-who-note"><i className="fas fa-screwdriver-wrench" />{FOR_BUYERS.note}</p>
                 <div className="lp-who-actions">
                   <Link to="/shop" className="btn lp-cta px-4"><i className="fas fa-store me-2" />Shop equipment</Link>
                 </div>
