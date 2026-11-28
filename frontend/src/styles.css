@@ -532,3 +532,13 @@ h1, h2, h3, h4, h5, h6 { letter-spacing: -0.02em; }
 }
 .lp-who-card.tone-amber .lp-who-badge { color: #8a5a00; }
 .lp-who-card.tone-amber li::before { color: #d08a00; }
+
+/* ---------- Master admin sign-in (/master) ---------- */
+.ma-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem 1rem; background: linear-gradient(160deg, #0c2a3a 0%, #0e4a52 60%, #0f5c57 100%); }
+.ma-card { width: 100%; max-width: 420px; background: #fff; border-radius: 22px; padding: 2rem 1.8rem 1.4rem; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3); }
+.ma-badge { width: 56px; height: 56px; border-radius: 16px; background: var(--brand-soft); color: var(--brand); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; margin-bottom: 1rem; }
+.ma-card h1 { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.03em; margin: 0 0 0.3rem; }
+.ma-sub { color: var(--muted); font-size: 0.92rem; margin-bottom: 1.4rem; }
+.ma-setup { margin-top: 1rem; text-align: center; font-size: 0.88rem; color: var(--muted); }
+.ma-foot { margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid var(--line); text-align: center; font-size: 0.82rem; }
+.ma-foot a { color: var(--muted); }

@@ -9,13 +9,17 @@ Only emails listed in PLATFORM_ADMIN_EMAILS can use it.
 
 Payments are recorded by you when the money arrives (EcoCash, bank, cash); there is no online billing.
 """
+import hmac
+import os
 from datetime import date, datetime
 
 from flask import Blueprint, g, jsonify, request
+from werkzeug.security import generate_password_hash
 from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, String, func
 from sqlalchemy.orm import relationship
 
-from .auth import ApiError, is_operator, protect
+from .auth import (PUBLIC_ENDPOINTS, ApiError, _client_ip, _email, _limited, _password, _session_json, _start_session,
+                   _text, is_operator, platform_operators, protect)
 from .database import Base, db_session
 from .models import Company, User
 from .payment_plans import add_months
@@ -177,6 +181,57 @@ def _all_company_rows():
     for u in db_session.query(User).filter(User.role == 'owner').order_by(User.id):
         owners.setdefault(u.company_id, u.email)
     return [_company_row(c, subs.get(c.id), last.get(c.id), users.get(c.id, 0), owners.get(c.id)) for c in companies]
+
+
+# ---------------------------------------------------------------------------
+# Creating the master account (public page, protected by a one-time setup code)
+# ---------------------------------------------------------------------------
+
+def _setup_code():
+    code = os.environ.get('MASTER_SETUP_CODE', '').strip()
+    return code if len(code) >= 8 else ''
+
+
+def _setup_available():
+    """True while a setup code is configured and an owner email in PLATFORM_ADMIN_EMAILS has no account yet."""
+    if not _setup_code():
+        return False
+    return any(db_session.query(User).filter(func.lower(User.email) == e).first() is None for e in platform_operators())
+
+
+@master_bp.get('/setup-status')
+def setup_status():
+    return jsonify(available=_setup_available())
+
+
+@master_bp.post('/setup')
+def setup():
+    """Create the master account. Needs MASTER_SETUP_CODE (set by you in the hosting dashboard); works only for an
+    email listed in PLATFORM_ADMIN_EMAILS that has no account yet, so it stops working once the account exists."""
+    if _limited(f'master-setup:{_client_ip()}', 6, 3600):
+        raise ApiError('Too many tries. Please wait an hour.', 429)
+    data = request.get_json(silent=True) or {}
+    code = _setup_code()
+    if not code or not hmac.compare_digest(str(data.get('code') or '').strip().encode(), code.encode()):
+        raise ApiError('That setup code is not right.', 403)
+    email = _email(data)
+    if email not in platform_operators():
+        raise ApiError('That email is not on the list of platform owners.', 403)
+    if db_session.query(User).filter(func.lower(User.email) == email).first() is not None:
+        raise ApiError('The master account already exists. Sign in instead.')
+    name = _text(data, 'name', 100, 'Your name', required=True)
+    password = _password(data)
+    company = Company(name=os.environ.get('MASTER_COMPANY_NAME', '').strip()[:150] or 'Afritech', email=email)
+    db_session.add(company)
+    db_session.flush()
+    user = User(company_id=company.id, name=name, email=email, role='owner', password_hash=generate_password_hash(password))
+    db_session.add(user)
+    db_session.flush()
+    _start_session(user)
+    return jsonify(_session_json(user)), 201
+
+
+PUBLIC_ENDPOINTS.update({'master.setup_status', 'master.setup'})
 
 
 # ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ import Payments from './pages/Payments.jsx';
 import Projects from './pages/Projects.jsx';
 import PlatformUsage from './pages/PlatformUsage.jsx';
 import { MasterCompanies, MasterPlans, MasterSuppliers } from './pages/MasterAdmin.jsx';
+import { MasterLogin, MasterSetup } from './pages/MasterAccess.jsx';
 import Shop from './pages/Shop.jsx';
 import { ShopOrders, ShopProducts, ShopSettings } from './pages/ShopAdmin.jsx';
 import Reports from './pages/Reports.jsx';
@@ -39,7 +40,8 @@ function NotFound() {
 
 // People without dashboard access (e.g. technicians) start on the first page they can use.
 function Home() {
-  const { can } = useAuth();
+  const { can, features } = useAuth();
+  if (features.operator) return <Navigate to="/master/companies" replace />;   // the master account starts in Master admin
   if (can('dashboard')) return <Dashboard />;
   if (can('operations')) return <Navigate to="/activities" replace />;
   if (can('inventory')) return <Navigate to="/inventory" replace />;
@@ -56,6 +58,8 @@ export default function App() {
       <Routes>
         <Route path="/signup" element={<AuthPage mode="signup" />} />
         <Route path="/shop" element={<Shop />} />
+        <Route path="/master" element={<MasterLogin />} />
+        <Route path="/master/setup" element={<MasterSetup />} />
         <Route path="*" element={<AuthPage mode="login" />} />
       </Routes>
     );
@@ -66,6 +70,8 @@ export default function App() {
       <Routes>
         <Route path="login" element={<Navigate to="/" replace />} />
         <Route path="signup" element={<Navigate to="/" replace />} />
+        <Route path="master" element={<Navigate to="/master/companies" replace />} />
+        <Route path="master/setup" element={<Navigate to="/master/companies" replace />} />
         <Route path="shop" element={<Shop />} />
         <Route element={<Layout />}>
           <Route index element={<Home />} />

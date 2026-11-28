@@ -264,6 +264,13 @@ def _email(data):
     return email
 
 
+def _not_reserved(email):
+    """The platform owner's email is reserved: nobody can register it through sign-up or by adding a team member, so
+    it cannot be taken over before the master account is created (see master.py, /master/setup)."""
+    if email in platform_operators():
+        raise ApiError('That email address is reserved. Please use another one.')
+
+
 def _password(data, required=True):
     password = data.get('password')
     if not password and not required:
@@ -336,6 +343,7 @@ def signup():
     name = _text(data, 'name', 100, 'Your name', required=True)
     email = _email(data)
     password = _password(data)
+    _not_reserved(email)
     if db_session.query(User).filter_by(email=email).first():
         raise ApiError('An account with this email already exists. Please log in instead.')
     company = Company(name=company_name, phone=_text(data, 'phone', 100) or None, email=email)
@@ -489,6 +497,7 @@ def users_list():
 def users_create():
     data = request.get_json(silent=True) or {}
     email = _email(data)
+    _not_reserved(email)
     if db_session.query(User).filter_by(email=email).first():
         raise ApiError('That email address is already registered.')
     from .master import check_user_limit      # the company's plan may cap the team size
@@ -512,6 +521,8 @@ def users_update(pk):
     if user.id == g.user.id and not active:
         raise ApiError('You cannot deactivate your own account.')
     email = _email(data) if data.get('email') else user.email
+    if email != user.email:
+        _not_reserved(email)
     if email != user.email and db_session.query(User).filter_by(email=email).first():
         raise ApiError('That email address is already registered.')
     user.name = _text(data, 'name', 100) or user.name

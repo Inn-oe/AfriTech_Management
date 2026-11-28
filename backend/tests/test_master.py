@@ -133,3 +133,48 @@ def test_suppliers_directory(owner):
     assert patch(op, f'/api/master/suppliers/{s["id"]}', {'recommended': False, 'notes': 'cash only'})['notes'] == 'cash only'
     assert op.delete(f'/api/master/suppliers/{s["id"]}', headers=H).status_code == 200
     assert cust.get('/api/master/suppliers').status_code == 403
+
+
+def test_the_owners_email_cannot_be_registered_before_the_master_account_exists(app, owner, monkeypatch):
+    op, cust, _, _ = owner
+    reserved = f'reserved{next(_n)}@master.test'
+    monkeypatch.setenv('PLATFORM_ADMIN_EMAILS', reserved)
+    signup_try = app.test_client().post('/api/auth/signup', headers=H, json={
+        'company_name': 'Thief Co', 'name': 'Thief', 'email': reserved, 'password': 'a-long-password'})
+    assert signup_try.status_code == 400 and 'reserved' in signup_try.get_json()['error']
+    # a company owner cannot add the owner's email as a team member either
+    team = cust.post('/api/users', headers=H, json={'name': 'X', 'email': reserved, 'password': 'a-long-password', 'role': 'sales'})
+    assert team.status_code == 400 and 'reserved' in team.get_json()['error']
+    me = cust.get('/api/users').get_json()[0]
+    edit = cust.put(f"/api/users/{me['id']}", headers=H, json={'name': me['name'], 'email': reserved, 'role': 'owner'})
+    assert edit.status_code == 400 and 'reserved' in edit.get_json()['error']
+
+
+def test_master_account_is_created_on_the_setup_page_with_a_one_time_code(app, monkeypatch):
+    email = f'master{next(_n)}@master.test'
+    monkeypatch.setenv('PLATFORM_ADMIN_EMAILS', email)
+    monkeypatch.delenv('MASTER_SETUP_CODE', raising=False)
+    anon = app.test_client()
+    assert anon.get('/api/master/setup-status').get_json() == {'available': False}            # no code configured
+
+    monkeypatch.setenv('MASTER_SETUP_CODE', 'correct-horse-code')
+    monkeypatch.setenv('MASTER_COMPANY_NAME', 'Afritech HQ')
+    assert anon.get('/api/master/setup-status').get_json() == {'available': True}
+    body = {'code': 'correct-horse-code', 'email': email, 'name': 'Innocent Cooper', 'password': 'a-long-password'}
+    from app import auth
+    auth._HITS.clear()
+    assert anon.post('/api/master/setup', headers=H, json={**body, 'code': 'wrong-code-here'}).status_code == 403
+    assert anon.post('/api/master/setup', headers=H, json={**body, 'email': 'someone@else.test'}).status_code == 403
+    assert anon.post('/api/master/setup', headers=H, json={**body, 'password': 'short'}).status_code == 400
+
+    made = anon.post('/api/master/setup', headers=H, json=body)
+    assert made.status_code == 201, made.get_json()
+    session = made.get_json()
+    assert session['features']['operator'] is True and session['company']['name'] == 'Afritech HQ'
+    assert anon.get('/api/master/overview').status_code == 200                                # signed in as the master
+
+    assert anon.get('/api/master/setup-status').get_json() == {'available': False}            # works once only
+    again = app.test_client().post('/api/master/setup', headers=H, json=body)
+    assert again.status_code == 400 and 'already exists' in again.get_json()['error']
+    login = app.test_client().post('/api/auth/login', headers=H, json={'email': email, 'password': 'a-long-password'})
+    assert login.status_code == 200 and login.get_json()['features']['operator'] is True

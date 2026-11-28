@@ -28,7 +28,9 @@ export default function Layout() {
   }, []);
 
   // Sections and tabs this user may open.
+  // The master account runs the platform, not a business: it only needs Master admin, the shop and its settings.
   const sections = SECTIONS
+    .filter((s) => !features.operator || ['master', 'shop', 'settings'].includes(s.key))
     .map((s) => ({ ...s, tabs: s.tabs.filter((t) => (t.module === 'any' || can(t.module)) && (!t.feature || features[t.feature])) }))
     .filter((s) => s.tabs.length > 0);
   const current = sectionOf(pathname);
