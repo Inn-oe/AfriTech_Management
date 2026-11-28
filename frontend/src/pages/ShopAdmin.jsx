@@ -180,6 +180,7 @@ export function ShopProducts() {
   const confirm = useConfirm();
   const [selected, setSelected] = useState(new Set());
   const [editing, setEditing] = useState(null);
+  const [comparing, setComparing] = useState(null);   // the product whose sellers are being compared
 
   useEffect(() => setSelected(new Set()), [status, trade, q]);
   const rows = data?.products || [];
@@ -251,7 +252,7 @@ export function ShopProducts() {
                 <tr>
                   <th style={{ width: 32 }}><input type="checkbox" className="form-check-input" checked={allOn} aria-label="Select all"
                     onChange={() => setSelected(allOn ? new Set() : new Set(rows.map((p) => p.id)))} /></th>
-                  <th>Item</th><th>Category</th><th>From</th><th className="text-end">Their price</th><th className="text-end">Our price</th><th>Status</th><th />
+                  <th>Item</th><th>Category</th><th>Sellers</th><th className="text-end">We buy at</th><th className="text-end">Our price</th><th className="text-end">Profit</th><th>Status</th><th />
                 </tr>
               </thead>
               <tbody>
@@ -274,10 +275,18 @@ export function ShopProducts() {
                         {TRADES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
                       </select>
                     </td>
-                    <td className="small">{p.source_url ? <a href={p.source_url} target="_blank" rel="noreferrer">{p.source_name || 'Shop'}</a> : (p.source_name || 'Added by hand')}</td>
-                    <td className="text-end small">{p.source_price ? usd(p.source_price) : '—'}</td>
+                    <td className="small">
+                      <button type="button" className="btn btn-link btn-sm p-0 text-start text-decoration-none" title="Compare sellers and prices" onClick={() => setComparing(p)}>
+                        {p.preferred ? <>{p.preferred.recommended && <i className="fas fa-star text-warning me-1" title="A seller we recommend" />}<strong>{p.preferred.supplier}</strong></> : <span className="text-muted">No seller price</span>}
+                        <div className="text-muted">{p.offers.length} seller{p.offers.length === 1 ? '' : 's'}{p.cheapest && p.preferred && p.cheapest.supplier !== p.preferred.supplier ? `, cheaper: ${p.cheapest.supplier} ${usd(p.cheapest.price)}` : ''}</div>
+                      </button>
+                    </td>
+                    <td className="text-end small">{p.preferred ? usd(p.preferred.price) : '—'}</td>
                     <td className="text-end">
                       <PriceCell p={p} onSave={(v) => patch(p, { price_override: v })} />
+                    </td>
+                    <td className="text-end small">
+                      {p.preferred ? <span className={p.preferred.profit >= 0 ? 'text-success fw-semibold' : 'text-danger fw-semibold'}>{usd(p.preferred.profit)}<div className="fw-normal">{p.preferred.margin}%</div></span> : '—'}
                     </td>
                     <td>
                       <select className={`form-select form-select-sm ${p.status === 'listed' ? 'border-success' : ''}`} value={p.status} onChange={(e) => patch(p, { status: e.target.value })} aria-label="Status">
@@ -285,19 +294,118 @@ export function ShopProducts() {
                       </select>
                     </td>
                     <td className="text-end text-nowrap">
+                      <button type="button" className="btn btn-sm btn-link" title="Compare sellers and profit" onClick={() => setComparing(p)}><i className="fas fa-scale-balanced" /></button>
                       <button type="button" className="btn btn-sm btn-link" title="Edit" onClick={() => setEditing({ ...EMPTY_ITEM, ...p, price_override: p.price_override ?? '', install_fee: p.install_fee_own ?? '', supplier_company: p.supplier_company || '' })}><i className="fas fa-pen" /></button>
                       {!p.source_id && <button type="button" className="btn btn-sm btn-link text-danger" title="Delete" onClick={() => remove(p)}><i className="fas fa-trash" /></button>}
                     </td>
                   </tr>
                 ))}
-                {!rows.length && <tr><td colSpan="8" className="text-center text-muted py-4">No items here. Use “Sync now” in Shop settings, or add an item by hand.</td></tr>}
+                {!rows.length && <tr><td colSpan="9" className="text-center text-muted py-4">No items here. Use “Sync now” in Shop settings, or add an item by hand.</td></tr>}
               </tbody>
             </table>
           </div>
         </div>
       )}
+      {comparing && <OffersModal product={comparing} onClose={() => setComparing(null)} onChanged={() => { reload(); overview.reload(); }} />}
       {editing && <ItemForm item={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); overview.reload(); }} />}
     </>
+  );
+}
+
+/** Every seller of one product, the profit we would make buying from each at our selling price, and the sellers we recommend. */
+function OffersModal({ product, onClose, onChanged }) {
+  const notify = useToast();
+  const confirm = useConfirm();
+  const [p, setP] = useState(product);
+  const [ourPrice, setOurPrice] = useState(product.price_override ?? '');
+  const [form, setForm] = useState({ supplier: '', price: '', url: '', note: '', recommended: false });
+  const [busy, setBusy] = useState(false);
+
+  const run = async (fn) => {
+    setBusy(true);
+    try {
+      const next = await fn();
+      setP(next);
+      onChanged();
+      return true;
+    } catch (err) {
+      notify(err.message, 'error');
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+  const add = async (e) => {
+    e.preventDefault();
+    if (await run(() => api.post(`/shop/admin/products/${p.id}/offers`, { ...form, price: Number(form.price) }))) {
+      setForm({ supplier: '', price: '', url: '', note: '', recommended: false });
+    }
+  };
+  const toggle = (o) => run(() => api.patch(`/shop/admin/offers/${o.id}`, { recommended: !o.recommended }));
+  const remove = async (o) => {
+    if (!(await confirm(`Remove ${o.supplier} from the sellers of this item?`, { tone: 'danger', confirmLabel: 'Remove' }))) return;
+    run(() => api.del(`/shop/admin/offers/${o.id}`));
+  };
+  const savePrice = () => run(() => api.patch(`/shop/admin/products/${p.id}`, { price_override: ourPrice === '' ? null : Number(ourPrice) }));
+  const sorted = [...p.offers].sort((a, b) => a.price - b.price);
+
+  return (
+    <Modal title="Compare sellers" size="xl" onClose={onClose}>
+      <div className="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
+        <div>
+          <div className="fw-semibold">{p.name}</div>
+          <div className="small text-muted">What each seller charges, and the profit you make at your selling price.</div>
+        </div>
+        <div className="d-flex align-items-end gap-2">
+          <div>
+            <label className="form-label small fw-semibold mb-1" htmlFor="op-price">Our selling price ($)</label>
+            <input id="op-price" type="number" min="0" step="0.01" className="form-control" style={{ width: 150 }} value={ourPrice} placeholder={String(p.price)} onChange={(e) => setOurPrice(e.target.value)} />
+          </div>
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={savePrice}>Save price</button>
+        </div>
+      </div>
+      <div className="small mb-2">Now selling at <strong>{usd(p.price)}</strong>{p.preferred ? <>. Buying from <strong>{p.preferred.supplier}</strong> at {usd(p.preferred.price)} gives a profit of <strong className={p.preferred.profit >= 0 ? 'text-success' : 'text-danger'}>{usd(p.preferred.profit)} ({p.preferred.margin}%)</strong>.</> : '. Add a seller below to see your profit.'}</div>
+
+      <div className="table-responsive">
+        <table className="table table-sm align-middle">
+          <thead><tr><th>Seller</th><th className="text-end">Their price</th><th className="text-end">Your profit</th><th className="text-end">Margin</th><th className="text-center">We recommend</th><th /></tr></thead>
+          <tbody>
+            {sorted.map((o) => (
+              <tr key={`${o.id}-${o.supplier}`} className={o.in_stock ? '' : 'opacity-50'}>
+                <td>
+                  <strong>{o.supplier}</strong>
+                  {p.cheapest && p.cheapest.supplier === o.supplier && p.cheapest.price === o.price && <span className="badge text-bg-success ms-2">Cheapest</span>}
+                  {p.preferred && p.preferred.supplier === o.supplier && p.preferred.price === o.price && <span className="badge text-bg-primary ms-1">We buy here</span>}
+                  {!o.in_stock && <span className="badge text-bg-secondary ms-1">Out of stock</span>}
+                  <div className="small text-muted">{o.read_from_shop ? 'Price read from their website' : (o.note || 'Added by you')}{o.url && <> · <a href={o.url} target="_blank" rel="noreferrer">link <i className="fas fa-up-right-from-square" /></a></>}</div>
+                </td>
+                <td className="text-end">{usd(o.price)}</td>
+                <td className={`text-end fw-semibold ${o.profit >= 0 ? 'text-success' : 'text-danger'}`}>{usd(o.profit)}</td>
+                <td className="text-end">{o.margin}%</td>
+                <td className="text-center">
+                  {o.read_from_shop ? <span className="text-muted">-</span> : (
+                    <button type="button" className="btn btn-sm btn-link" disabled={busy} onClick={() => toggle(o)} title={o.recommended ? 'Stop recommending' : 'Recommend this seller'}>
+                      <i className={`${o.recommended ? 'fas text-warning' : 'far text-muted'} fa-star`} />
+                    </button>
+                  )}
+                </td>
+                <td className="text-end">{!o.read_from_shop && <button type="button" className="btn btn-sm btn-link text-danger" disabled={busy} onClick={() => remove(o)} title="Remove"><i className="fas fa-trash" /></button>}</td>
+              </tr>
+            ))}
+            {!sorted.length && <tr><td colSpan="6" className="text-center text-muted py-3">No seller prices yet.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+
+      <form className="row g-2 align-items-end border-top pt-3" onSubmit={add}>
+        <div className="col-12 fw-semibold small">Add another seller</div>
+        <div className="col-sm-4"><input className="form-control" placeholder="Seller, e.g. Mr Dube (Harare)" required maxLength={100} value={form.supplier} onChange={(e) => setForm({ ...form, supplier: e.target.value })} aria-label="Seller" /></div>
+        <div className="col-sm-2"><div className="input-group"><span className="input-group-text">$</span><input className="form-control" type="number" min="0.01" step="0.01" placeholder="Price" required value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} aria-label="Their price" /></div></div>
+        <div className="col-sm-3"><input className="form-control" placeholder="Note, e.g. cash only (optional)" maxLength={200} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} aria-label="Note" /></div>
+        <div className="col-sm-2 form-check ms-2 mb-2"><input id="op-rec" className="form-check-input" type="checkbox" checked={form.recommended} onChange={(e) => setForm({ ...form, recommended: e.target.checked })} /><label className="form-check-label small" htmlFor="op-rec">We recommend</label></div>
+        <div className="col-sm-auto"><button type="submit" className="btn btn-primary" disabled={busy}>Add</button></div>
+      </form>
+    </Modal>
   );
 }
 

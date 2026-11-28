@@ -25,7 +25,7 @@ from datetime import datetime, timedelta
 from flask import Blueprint, Response, g, jsonify, request
 from sqlalchemy import (Boolean, Column, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint,
                         or_)
-from sqlalchemy.orm import deferred, relationship
+from sqlalchemy.orm import deferred, relationship, selectinload
 
 from .auth import PUBLIC_ENDPOINTS, ApiError, _client_ip, _limited, _logo_mime, is_operator, protect
 from .database import Base, db_session
@@ -34,7 +34,7 @@ log = logging.getLogger('erp.shop')
 shop_bp = Blueprint('shop', __name__, url_prefix='/api/shop')
 
 USER_AGENT = 'AfritechCatalogBot/1.0 (product price reader; respects robots.txt)'
-TRADES = ('solar', 'cctv', 'borehole', 'alarms', 'razorwire')
+TRADES = ('solar', 'cctv', 'borehole', 'alarms', 'razorwire', 'materials')
 PAY_OPTIONS = ('COD', 'ONLINE')            # cash on delivery, or pay online now (a deposit of at least the minimum, up to all)
 ONLINE_METHODS = ('ECOCASH', 'TRANSFER')
 MAX_IMAGE_BYTES = 1_200_000
@@ -45,8 +45,12 @@ MAX_PAGES = 30           # 100 products per page
 PAGE_PAUSE = 1.0         # seconds between feed pages, to be gentle on the shop's server
 
 DEFAULT_SETTINGS = {'markup_percent': '15', 'markup_flat': '0', 'whatsapp_number': '', 'last_auto_sync': '',
-                    'min_deposit_percent': '70', 'install_fee_default': '0', 'payment_instructions': ''}
-DEFAULT_SOURCES = [{'name': 'TV Sales & Home', 'base_url': 'https://www.tvsales.co.zw', 'categories': 'solar'}]
+                    'min_deposit_percent': '70', 'install_fee_default': '0', 'payment_instructions': '', 'seeded_sources': ''}
+# Shops whose public WooCommerce product lists are read (robots.txt permitting). Only items for the trades we sell are kept.
+DEFAULT_SOURCES = [
+    {'name': 'TV Sales & Home', 'base_url': 'https://www.tvsales.co.zw', 'categories': ''},
+    {'name': 'Montana Mall', 'base_url': 'https://montanamallzw.com', 'categories': ''},
+]
 
 
 # ---------------------------------------------------------------------------
@@ -88,10 +92,24 @@ class ShopProduct(Base):
     supplier_company = Column(String(100))           # the company providing this product, shown to customers
     install_fee = Column(Float)                      # fee for an installer for this item; empty = the shop's default fee
     image = deferred(Column(LargeBinary))            # a photo uploaded by the operator (image_url then points at it)
+    offers = relationship('ShopOffer', cascade='all, delete-orphan', order_by='ShopOffer.price')
     in_stock = Column(Boolean, default=True)
     status = Column(String(20), default='pending')
     created = Column(DateTime, default=datetime.utcnow)
     last_seen = Column(DateTime, default=datetime.utcnow)
+
+
+class ShopOffer(Base):
+    """One seller's price for a product (the operator's own list; the source shop's price is kept on the product)."""
+    __tablename__ = 'shop_offers'
+    id = Column(Integer, primary_key=True)
+    product_id = Column(Integer, ForeignKey('shop_products.id', ondelete='CASCADE'), nullable=False, index=True)
+    supplier = Column(String(100), nullable=False)
+    price = Column(Float, nullable=False)
+    url = Column(String(500))
+    note = Column(String(200))
+    recommended = Column(Boolean, default=False)     # a seller we recommend buying this from
+    updated = Column(DateTime, default=datetime.utcnow)
 
 
 class ShopOrder(Base):
@@ -167,6 +185,29 @@ def selling_price(product, conf=None):
     return float(math.ceil(raw - 1e-9)) if raw > 0 else 0.0
 
 
+def offers_view(p, conf=None):
+    """Every seller of this product with the profit we would make at our selling price, and the best ones.
+
+    Returns (rows, cheapest, preferred). `preferred` is the cheapest seller we recommend, or the cheapest overall
+    when none is recommended. A seller that is out of stock, or has no price, is shown but never chosen."""
+    price = selling_price(p, conf)
+    rows = []
+    if p.source_price:
+        rows.append({'id': None, 'supplier': p.source_name or 'Source shop', 'price': round(p.source_price, 2),
+                     'url': p.source_url, 'note': '', 'recommended': False, 'in_stock': bool(p.in_stock), 'read_from_shop': True})
+    for o in p.offers:
+        rows.append({'id': o.id, 'supplier': o.supplier, 'price': round(o.price, 2), 'url': o.url, 'note': o.note or '',
+                     'recommended': bool(o.recommended), 'in_stock': True, 'read_from_shop': False})
+    for r in rows:
+        r['profit'] = round(price - r['price'], 2)
+        r['margin'] = round((price - r['price']) / price * 100, 1) if price else 0.0
+    usable = [r for r in rows if r['price'] > 0 and r['in_stock']]
+    cheapest = min(usable, key=lambda r: r['price']) if usable else None
+    recommended = [r for r in usable if r['recommended']]
+    preferred = min(recommended, key=lambda r: r['price']) if recommended else cheapest
+    return rows, cheapest, preferred
+
+
 def install_fee_for(product, conf=None):
     """The fee for an installer to fit this item: its own fee, otherwise the shop's default fee."""
     if product.install_fee is not None:
@@ -175,10 +216,21 @@ def install_fee_for(product, conf=None):
 
 
 def ensure_defaults():
-    """Seed the default product source once (called at start-up)."""
-    if db_session.query(ShopSource).first() is None:
-        for s in DEFAULT_SOURCES:
-            db_session.add(ShopSource(**s))
+    """Add each default shop once (called at start-up). A shop the operator later removes is not put back."""
+    seeded = {u for u in settings()['seeded_sources'].split(',') if u}
+    changed = False
+    for default in DEFAULT_SOURCES:
+        if default['base_url'] in seeded:
+            continue
+        existing = db_session.query(ShopSource).filter_by(base_url=default['base_url']).first()
+        if existing is None:
+            db_session.add(ShopSource(**default))
+        elif existing.categories == 'solar' and not default['categories']:
+            existing.categories = ''          # it used to read only solar; now it reads the whole shop and keeps our trades
+        seeded.add(default['base_url'])
+        changed = True
+    if changed:
+        _set('seeded_sources', ','.join(sorted(seeded)))
         db_session.commit()
 
 
@@ -187,6 +239,9 @@ def ensure_defaults():
 # ---------------------------------------------------------------------------
 
 _KEYWORDS = {
+    'materials': ('cable', 'breaker', 'isolator', 'mcb', 'rcd', 'distribution board', 'db board', 'conduit', 'trunking',
+                  'cable lug', 'connector', 'mc4', 'junction box', 'surge', 'fuse', 'earth rod', 'din rail',
+                  'cable tie', 'busbar', 'gland'),
     'razorwire': ('razor wire', 'razorwire', 'razor-wire', 'concertina', 'barbed wire', 'barbwire', 'razor tape',
                   'security wire', 'palisade'),
     'cctv': ('cctv', 'dvr', 'nvr', 'ip camera', 'security camera', 'surveillance', 'dome camera', 'bullet camera',
@@ -194,7 +249,7 @@ _KEYWORDS = {
     'alarms': ('alarm', 'siren', 'intruder', 'motion sensor', 'motion detector', 'pir ', 'electric fence', 'energizer',
                'energiser', 'access control', 'intercom', 'gate motor', 'smart lock', 'biometric', 'keypad'),
     'borehole': ('borehole', 'submersible', 'water pump', 'solar pump', 'booster pump', 'pressure pump',
-                 'pressure tank', 'water tank', 'jojo', 'pump controller', 'pump'),
+                 'pressure tank', 'water tank', 'jojo', 'pump controller', 'pump station'),
     'solar': ('solar', 'photovoltaic', 'pv panel', 'mppt', 'charge controller', 'lithium', 'lifepo4', 'deep cycle',
               'gel battery', 'power station', 'hybrid inverter', 'off-grid', 'off grid', 'kva', 'growatt', 'deye',
               'must inverter', 'felicity', 'pylontech', 'victron'),
@@ -202,7 +257,8 @@ _KEYWORDS = {
 # Household appliances that share words with the trades ("inverter fridge", "inverter air conditioner").
 _EXCLUDE = ('fridge', 'freezer', 'refrigerator', 'air condition', 'aircon', 'washing', 'washer', 'microwave',
             'television', ' tv ', ' tvs', 'oven', 'cooker', 'dishwasher', 'kettle', ' iron ', 'blender', 'cell phone',
-            'smartphone', 'smart watch', 'hair ')
+            'smartphone', 'smart watch', 'hair ', 'fuel pump', 'inflator', 'balloon', 'bicycle', 'tyre', 'tire',
+            'mercedes', 'toyota', 'pajero', 'hilux', 'engine', 'breathalyzer', ' car ', 'vehicle')
 
 
 def classify(name, category_names):
@@ -211,7 +267,7 @@ def classify(name, category_names):
     cats = ' '.join(category_names).lower()
     if any(w in text for w in _EXCLUDE):
         return None
-    order = ('razorwire', 'cctv', 'alarms', 'borehole', 'solar')        # most specific first ("solar water pump" -> borehole)
+    order = ('razorwire', 'cctv', 'alarms', 'borehole', 'solar', 'materials')        # most specific first ("solar water pump" -> borehole)
     for trade in order:
         if any(w in text for w in _KEYWORDS[trade]):
             return trade
@@ -240,6 +296,24 @@ def _allowed_by_robots(base_url, path):
 def _plain(text_html, limit=600):
     text = re.sub(r'<[^>]+>', ' ', text_html or '')
     return re.sub(r'\s+', ' ', html.unescape(text)).strip()[:limit]
+
+
+def check_source(base_url, get_json=None):
+    """Raise RuntimeError, in plain words, when a shop's prices cannot be read automatically."""
+    getter = get_json or _get_json
+    base = base_url.rstrip('/')
+    if get_json is None and not _allowed_by_robots(base, '/wp-json/wc/store/v1/products'):
+        raise RuntimeError("This shop's robots.txt does not allow reading its product list, so it was not added.")
+    try:
+        items = getter(base + '/wp-json/wc/store/v1/products?per_page=1&page=1')
+    except Exception:
+        items = None
+    if not isinstance(items, list):
+        raise RuntimeError("This website has no public product list (it is not a WooCommerce shop), so its prices cannot "
+                           "be read automatically. Add its prices by hand under Compare sellers instead.")
+    currency = ((items[0].get('prices') or {}).get('currency_code') or 'USD').upper() if items else 'USD'
+    if currency != 'USD':
+        raise RuntimeError(f'This shop shows its prices in {currency}. The shop only reads US dollar prices.')
 
 
 def fetch_products(source, get_json=_get_json, pause=PAGE_PAUSE):
@@ -486,9 +560,12 @@ def place_order():
         price = selling_price(product, conf)
         goods += price * qty
         install += install_fee_for(product, conf)          # one installer visit per kind of item, however many
-        order.items.append(ShopOrderItem(product_id=product.id, name=product.name, unit_price=price, quantity=qty,
-                                         source_name=product.source_name, source_url=product.source_url,
-                                         source_price=product.source_price, supplier_company=product.supplier_company))
+        _, _, buy_from = offers_view(product, conf)       # who we would buy it from, and at what cost
+        order.items.append(ShopOrderItem(
+            product_id=product.id, name=product.name, unit_price=price, quantity=qty,
+            source_name=(buy_from['supplier'] if buy_from else product.source_name),
+            source_url=(buy_from['url'] if buy_from else product.source_url),
+            source_price=(buy_from['price'] if buy_from else product.source_price), supplier_company=product.supplier_company))
     order.installation_fee = round(install, 2) if order.installer else 0.0
     order.total = round(goods + order.installation_fee, 2)
     order.deposit_due = round(order.total * percent / 100, 2) if option == 'ONLINE' else 0.0
@@ -531,7 +608,10 @@ def _operator():
 
 
 def _admin_product(p, conf):
+    rows, cheapest, preferred = offers_view(p, conf)
+    pick = lambda r: ({k: r[k] for k in ('supplier', 'price', 'profit', 'margin', 'recommended')} if r else None)  # noqa: E731
     return {**_public(p, conf), 'status': p.status, 'in_stock': bool(p.in_stock), 'source_id': p.source_id,
+            'offers': rows, 'cheapest': pick(cheapest), 'preferred': pick(preferred),
             'source_name': p.source_name, 'source_url': p.source_url, 'source_price': p.source_price,
             'price_override': p.price_override, 'install_fee_own': p.install_fee, 'last_seen': p.last_seen.isoformat() if p.last_seen else None}
 
@@ -618,6 +698,10 @@ def add_source():
     _operator()
     source = ShopSource(active=True)
     _source_fields(source, {'name': '', 'base_url': '', **(request.get_json(silent=True) or {})})
+    try:
+        check_source(source.base_url)             # say now, in plain words, if this shop cannot be read
+    except RuntimeError as exc:
+        raise ApiError(str(exc))
     db_session.add(source)
     db_session.commit()
     return jsonify(_source(source)), 201
@@ -661,7 +745,7 @@ def _not_found():
 def admin_products():
     _operator()
     conf = settings()
-    q = db_session.query(ShopProduct)
+    q = db_session.query(ShopProduct).options(selectinload(ShopProduct.offers))
     if request.args.get('status') in PRODUCT_STATUSES:
         q = q.filter(ShopProduct.status == request.args['status'])
     if request.args.get('trade') in TRADES:
@@ -726,6 +810,62 @@ def edit_product(pid):
                                                        'supplier_company', 'install_fee')}
     _product_fields(p, data)
     db_session.commit()
+    return jsonify(_admin_product(p, settings()))
+
+
+def _offer_fields(offer, data):
+    if 'supplier' in data:
+        offer.supplier = _clean(data, 'supplier', 100, 'Seller', required=True)
+    if 'price' in data:
+        price = _num(data['price'], None)
+        if price is None or price <= 0 or price > 10_000_000:
+            raise ApiError('Enter the price this seller charges, more than 0.')
+        offer.price = round(price, 2)
+    if 'url' in data:
+        offer.url = _clean(data, 'url', 500, 'Link')
+    if 'note' in data:
+        offer.note = _clean(data, 'note', 200, 'Note')
+    if 'recommended' in data:
+        offer.recommended = bool(data['recommended'])
+    offer.updated = datetime.utcnow()
+
+
+@shop_bp.post('/admin/products/<int:pid>/offers')
+def add_offer(pid):
+    """Another seller of this product and their price, e.g. a person selling a 3kVA inverter at $280."""
+    _operator()
+    p = db_session.get(ShopProduct, pid) or _not_found()
+    data = request.get_json(silent=True) or {}
+    if not data.get('supplier') or data.get('price') in (None, ''):
+        raise ApiError('Enter the seller and their price.')
+    offer = ShopOffer(product_id=p.id)
+    _offer_fields(offer, data)
+    db_session.add(offer)
+    db_session.commit()
+    db_session.refresh(p)
+    return jsonify(_admin_product(p, settings())), 201
+
+
+@shop_bp.patch('/admin/offers/<int:oid>')
+def edit_offer(oid):
+    _operator()
+    offer = db_session.get(ShopOffer, oid) or _not_found()
+    _offer_fields(offer, request.get_json(silent=True) or {})
+    db_session.commit()
+    p = db_session.get(ShopProduct, offer.product_id)
+    db_session.refresh(p)
+    return jsonify(_admin_product(p, settings()))
+
+
+@shop_bp.delete('/admin/offers/<int:oid>')
+def delete_offer(oid):
+    _operator()
+    offer = db_session.get(ShopOffer, oid) or _not_found()
+    pid = offer.product_id
+    db_session.delete(offer)
+    db_session.commit()
+    p = db_session.get(ShopProduct, pid)
+    db_session.refresh(p)
     return jsonify(_admin_product(p, settings()))
 
 
