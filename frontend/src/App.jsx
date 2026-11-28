@@ -14,6 +14,7 @@ import DocumentView from './pages/DocumentView.jsx';
 import Payments from './pages/Payments.jsx';
 import Projects from './pages/Projects.jsx';
 import PlatformUsage from './pages/PlatformUsage.jsx';
+import { MasterCompanies, MasterPlans, MasterSuppliers } from './pages/MasterAdmin.jsx';
 import Shop from './pages/Shop.jsx';
 import { ShopOrders, ShopProducts, ShopSettings } from './pages/ShopAdmin.jsx';
 import Reports from './pages/Reports.jsx';
@@ -86,6 +87,9 @@ export default function App() {
           <Route path="projects" element={<Projects />} />
           <Route path="reports" element={<Reports />} />
           <Route path="platform-usage" element={<PlatformUsage />} />
+          <Route path="master/companies" element={<MasterCompanies />} />
+          <Route path="master/plans" element={<MasterPlans />} />
+          <Route path="master/suppliers" element={<MasterSuppliers />} />
           <Route path="shop-orders" element={<ShopOrders />} />
           <Route path="shop-products" element={<ShopProducts />} />
           <Route path="shop-settings" element={<ShopSettings />} />

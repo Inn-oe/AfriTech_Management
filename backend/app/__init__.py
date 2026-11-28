@@ -22,7 +22,7 @@ from .platform_usage import platform_bp
 from .auth import auth_bp
 from .api import assign_missing_invoice_numbers, bp as api_bp
 from .whatsapp import bp as whatsapp_bp
-from . import shop
+from . import master, shop
 from .models import Company, User
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s %(message)s')
@@ -157,6 +157,7 @@ def create_app():
     app.register_blueprint(whatsapp_bp)
     app.register_blueprint(platform_bp)
     app.register_blueprint(shop.shop_bp)
+    app.register_blueprint(master.master_bp)
 
     # Finish SQLAlchemy's model set-up now, on this one thread, before any other thread can run a query. Left to
     # the first query, a background thread (the Giebee import) and the first web request could start it at the

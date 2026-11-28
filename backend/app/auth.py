@@ -491,6 +491,8 @@ def users_create():
     email = _email(data)
     if db_session.query(User).filter_by(email=email).first():
         raise ApiError('That email address is already registered.')
+    from .master import check_user_limit      # the company's plan may cap the team size
+    check_user_limit(g.company_id)
     user = User(company_id=g.company_id, name=_text(data, 'name', 100, 'Name', required=True),
                 email=email, role=_role(data), password_hash=generate_password_hash(_password(data)),
                 is_active=data.get('is_active', True) is not False)

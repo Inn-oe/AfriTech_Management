@@ -43,6 +43,14 @@ export const SECTIONS = [
     ],
   },
   {
+    key: 'master', label: 'Master admin', icon: 'fa-user-shield',
+    tabs: [
+      { to: '/master/companies', label: 'Companies & subscriptions', module: 'admin', feature: 'operator' },
+      { to: '/master/plans', label: 'Plans', module: 'admin', feature: 'operator' },
+      { to: '/master/suppliers', label: 'Supplier shops', module: 'admin', feature: 'operator' },
+    ],
+  },
+  {
     key: 'shop', label: 'Online shop', icon: 'fa-store',
     tabs: [
       { to: '/shop-orders', label: 'Shop orders', module: 'admin', feature: 'operator' },
